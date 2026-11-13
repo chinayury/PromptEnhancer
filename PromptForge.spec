@@ -10,7 +10,7 @@ hiddenimports += collect_submodules('forge')
 
 
 a = Analysis(
-    ['src/promptforge/__main__.py'],
+    ['packaging/pyinstaller_desktop.py'],
     pathex=['src'],
     binaries=[],
     datas=datas,

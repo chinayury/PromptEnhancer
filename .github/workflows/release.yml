@@ -1,0 +1,278 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "要发布的 Tag（如 v0.1.0）"
+        required: true
+
+permissions:
+  contents: write
+  packages: write
+  actions: write
+
+jobs:
+  build-dist:
+    name: Wheel + sdist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+          retention-days: 1
+
+  windows-desktop:
+    name: Windows desktop EXE
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[desktop]" pyinstaller
+      - name: Build desktop EXE
+        run: python -m PyInstaller --noconfirm PromptForge.spec
+      - name: Package
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "dist/PromptForge.exe")) { throw "PromptForge.exe not built" }
+          Compress-Archive -Path "dist/PromptForge.exe" `
+            -DestinationPath "PromptForge-${{ steps.ver.outputs.version }}-windows-desktop-x64.zip" -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-desktop
+          path: PromptForge-*-windows-desktop-x64.zip
+          retention-days: 1
+
+  windows-cli:
+    name: Windows CLI + web server EXEs
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[web]" pyinstaller
+      - name: Build CLI EXEs
+        run: |
+          python -m PyInstaller --noconfirm --onefile --console --name promptforge-cli --paths src --collect-data promptforge --collect-submodules promptforge --collect-submodules forge packaging/pyinstaller_cli.py
+          python -m PyInstaller --noconfirm --onefile --console --name forge-cli --paths src --collect-submodules forge packaging/pyinstaller_forge.py
+          python -m PyInstaller --noconfirm --onefile --console --name promptforge-web --paths src --collect-data promptforge --collect-submodules promptforge --collect-submodules forge packaging/pyinstaller_web.py
+      - name: Package
+        shell: pwsh
+        run: |
+          foreach ($f in @("dist/promptforge-cli.exe", "dist/forge-cli.exe", "dist/promptforge-web.exe")) {
+            if (-not (Test-Path $f)) { throw "$f not built" }
+          }
+          Compress-Archive -Path "dist/promptforge-cli.exe", "dist/forge-cli.exe" `
+            -DestinationPath "PromptForge-${{ steps.ver.outputs.version }}-windows-cli-x64.zip" -Force
+          Compress-Archive -Path "dist/promptforge-web.exe" `
+            -DestinationPath "PromptForge-${{ steps.ver.outputs.version }}-windows-web-x64.zip" -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-cli
+          path: PromptForge-*-windows-cli-x64.zip
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-web
+          path: PromptForge-*-windows-web-x64.zip
+          retention-days: 1
+
+  linux-cli:
+    name: Linux CLI package
+    needs: build-dist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+      - name: Package
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.ver.outputs.version }}"
+          mkdir -p pkg
+          cp dist/*.whl dist/*.tar.gz pkg/
+          cp requirements-web.txt README.md LICENSE pkg/
+          tar -czf "PromptForge-${VERSION}-linux-cli.tar.gz" -C pkg .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-cli
+          path: PromptForge-*-linux-cli.tar.gz
+          retention-days: 1
+
+  docker-publish:
+    name: Docker image (GHCR)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+      - name: Login GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: Build and push
+        run: |
+          set -euo pipefail
+          IMAGE="ghcr.io/chinayury/promptenhancer"
+          VERSION="${{ steps.ver.outputs.version }}"
+          docker build --build-arg PIP_INDEX_URL=https://pypi.org/simple \
+            -t "$IMAGE:$VERSION" -t "$IMAGE:latest" .
+          docker push "$IMAGE:$VERSION"
+          docker push "$IMAGE:latest"
+
+  release:
+    name: Create GitHub Release
+    needs: [build-dist, windows-desktop, windows-cli, linux-cli]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: release-assets/dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-desktop
+          path: release-assets/windows-desktop
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-cli
+          path: release-assets/windows-cli
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-web
+          path: release-assets/windows-web
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-cli
+          path: release-assets/linux-cli
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.ver.outputs.tag }}"
+          mapfile -t FILES < <(find release-assets -type f | sort)
+          printf 'release asset: %s\n' "${FILES[@]}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${FILES[@]}" --clobber
+          else
+            gh release create "$TAG" "${FILES[@]}" --title "PromptForge $TAG" --generate-notes
+          fi
+
+  cleanup:
+    name: Prune old assets / images / artifacts
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+      - name: Delete old release assets (keep release records)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.ver.outputs.version }}"
+          for rel in $(gh release list --limit 100 --json tagName --jq '.[].tagName'); do
+            while IFS= read -r name; do
+              [ -z "$name" ] && continue
+              if [[ "$name" != *"$VERSION"* ]]; then
+                echo "delete asset: $rel/$name"
+                gh release delete-asset "$rel" "$name" --yes
+              fi
+            done < <(gh release view "$rel" --json assets --jq '.assets[].name')
+          done
+      - name: Prune GHCR versions (keep latest + current)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.ver.outputs.version }}"
+          if ! gh api --paginate "/users/chinayury/packages/container/promptenhancer/versions" \
+              --jq '.[] | [.id, ((.metadata.container.tags // []) | join(","))] | @tsv' > versions.tsv 2>/dev/null; then
+            echo "no GHCR package yet; skip"
+            exit 0
+          fi
+          while IFS=$'\t' read -r id tags; do
+            [ -z "$id" ] && continue
+            if [[ ",$tags," != *",$VERSION,"* && ",$tags," != *",latest,"* ]]; then
+              echo "delete GHCR version: id=$id tags=$tags"
+              gh api -X DELETE "/users/chinayury/packages/container/promptenhancer/versions/$id"
+            fi
+          done < versions.tsv
+      - name: Delete old workflow artifacts (keep current run)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          CURRENT="${{ github.run_id }}"
+          gh api --paginate "/repos/${{ github.repository }}/actions/artifacts?per_page=100" \
+            --jq '.artifacts[] | [.id, .workflow_run.id, .name] | @tsv' > artifacts.tsv
+          while IFS=$'\t' read -r id run name; do
+            [ -z "$id" ] && continue
+            if [ "$run" != "$CURRENT" ]; then
+              echo "delete artifact: $name (run $run)"
+              gh api -X DELETE "/repos/${{ github.repository }}/actions/artifacts/$id"
+            fi
+          done < artifacts.tsv
