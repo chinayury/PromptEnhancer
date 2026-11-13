@@ -84,7 +84,17 @@ def _print_report(report, unresolved, stream=sys.stderr):
             print("   - %s" % u, file=stream)
 
 
+def _ensure_utf8_console():
+    """Windows 非 UTF-8 代码页下中文 help/输出会抛 UnicodeEncodeError，统一切到 UTF-8。"""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, OSError):
+            pass
+
+
 def main(argv=None):
+    _ensure_utf8_console()
     ap = argparse.ArgumentParser(
         prog="forge", description="指令构造器 InstructionForge v%s —— 文档/粘贴 → 五槽提示词" % __version__)
     ap.add_argument("--file", help="设计文档路径；传 - 表示从 stdin 读")

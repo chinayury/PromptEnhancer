@@ -27,6 +27,7 @@ from . import __version__
 from .core import engine, templates
 from .data import database as db
 from .config import load_providers
+from .utils.logging_setup import ensure_utf8_console
 
 
 def _build_cfg(args, saved):
@@ -53,6 +54,7 @@ def _run_one(cfg, text):
 
 
 def run(argv=None):
+    ensure_utf8_console()
     parser = argparse.ArgumentParser(
         prog="promptforge", description="提示词工坊 命令行模式 v%s" % __version__)
     parser.add_argument("--text", help="单条待增强的提示词")

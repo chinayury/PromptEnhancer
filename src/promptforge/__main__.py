@@ -8,7 +8,7 @@
 import os
 import sys
 
-from .utils.logging_setup import configure_logging, set_log_file
+from .utils.logging_setup import configure_logging, set_log_file, ensure_utf8_console
 from .data import database as db
 
 # 在导入任何会触发日志初始化的模块前，确定日志文件路径
@@ -24,6 +24,7 @@ def _gui_available():
 
 
 def main():
+    ensure_utf8_console()
     configure_logging()
     db.init_db()
     if len(sys.argv) > 1 and sys.argv[1] == "cli":

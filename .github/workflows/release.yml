@@ -14,6 +14,9 @@ permissions:
   packages: write
   actions: write
 
+env:
+  PYTHONUTF8: "1"
+
 jobs:
   build-dist:
     name: Wheel + sdist

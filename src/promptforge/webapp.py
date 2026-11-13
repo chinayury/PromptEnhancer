@@ -67,7 +67,7 @@ from .data import usage as usage_db
 from .data import users
 from .data import versions as verchain
 from .config import load_providers
-from .utils.logging_setup import set_log_file, configure_logging, get_logger
+from .utils.logging_setup import set_log_file, configure_logging, get_logger, ensure_utf8_console
 from forge import assembler as forge_assembler
 from forge.gui_model import InstructionController
 
@@ -1369,6 +1369,7 @@ def healthz():
 
 
 def main():
+    ensure_utf8_console()
     db.init_db()  # 全局库（桌面兼容 + 承载 pf_users 账号表）
     generated = users.init_users_db()
     usage_db.init_usage_db()  # 全局用量明细表（api_usage）

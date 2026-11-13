@@ -15,9 +15,19 @@
 
 import logging
 import os
+import sys
 
 DEFAULT_LOG_FILE = None
 _CONFIGURED = False
+
+
+def ensure_utf8_console():
+    """把 stdout/stderr 切到 UTF-8，避免 Windows 非 UTF-8 代码页下中文输出崩溃。"""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, OSError):
+            pass
 
 
 def set_log_file(path):
