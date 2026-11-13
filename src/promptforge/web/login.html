@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<title>回到工作台 · 提示词工坊</title>
+<style>
+/* ============================================================
+   钴蓝工坊 · Cobalt Forge · 登录门厅（v0.1.0 视觉重构 · 全浅色）
+   与上一代「黄铜工坊」差异化：冷暖对调（暖砂白→冷雾白、铜棕→钴蓝）、
+   衬线→全无衬线几何字体、大圆角柔影→直角硬投影、左侧品牌区改为
+   「编号化特性清单 + 顶部钴蓝色带」的工控台门厅形态。
+   ============================================================ */
+:root{
+  --cobalt:#1B4FD8; --cobalt-dark:#12359E; --cobalt-deep:#0A1F5C;
+  --cyan:#0E8FA8; --cyan-soft:#E4F2F5;
+  --bg:#F0F3F8; --card:#FFFFFF; --paper:#F6F8FC;
+  --line:#D9E0EA; --line-strong:#BFC9DA;
+  --title:#0F1A2E; --text:#2B3A50; --muted:#6B7C93; --soft:#EBF1FD;
+  --ok:#0F7A43; --err:#B3261E;
+  --mono:"Cascadia Mono","Consolas","SFMono-Regular","Liberation Mono",monospace;
+  --sans:"Segoe UI","HarmonyOS Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--sans);background:var(--bg);color:var(--text);font-size:14px;line-height:1.6;
+  display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px;
+  -webkit-font-smoothing:antialiased}
+::selection{background:var(--cobalt);color:#fff}
+.gate{display:flex;background:var(--card);border:1px solid var(--line-strong);border-radius:4px;
+  width:900px;max-width:96vw;min-height:520px;overflow:hidden;
+  box-shadow:0 4px 0 -2px rgba(15,26,46,.05),0 24px 60px rgba(15,26,46,.14)}
+/* 左侧：工坊门厅 */
+.vestibule{width:44%;background:var(--paper);padding:36px 34px;display:flex;flex-direction:column;
+  border-right:1px solid var(--line);position:relative}
+.vestibule::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--cobalt)}
+.vestibule .badge{display:inline-flex;align-items:center;gap:12px}
+.vestibule .mark{width:46px;height:46px;border-radius:4px;background:var(--cobalt);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 2px 0 var(--cobalt-dark)}
+.vestibule h1{font-size:19px;color:var(--title);letter-spacing:.5px;line-height:1.25;font-weight:700}
+.vestibule .en{font-size:10px;letter-spacing:3px;color:var(--cobalt);font-weight:700;margin-top:3px;font-family:var(--mono)}
+.vestibule .slogan{font-size:16px;color:var(--title);line-height:1.85;margin-top:30px;font-weight:600;
+  padding-left:14px;border-left:3px solid var(--cyan)}
+.vestibule .feat-cap{font-size:9px;letter-spacing:2.4px;color:var(--muted);font-weight:700;
+  margin-top:30px;font-family:var(--mono)}
+.vestibule ul{list-style:none;margin-top:12px;display:flex;flex-direction:column;gap:0}
+.vestibule li{display:flex;gap:12px;align-items:flex-start;font-size:13px;color:var(--text);
+  padding:11px 0;border-bottom:1px dashed var(--line)}
+.vestibule li:last-child{border-bottom:none}
+.vestibule li .idx{font-family:var(--mono);font-size:10px;font-weight:700;color:var(--cobalt);
+  background:var(--soft);border:1px solid #C9D8F6;border-radius:2px;padding:2px 6px;flex-shrink:0;margin-top:1px}
+.vestibule li svg{color:var(--cyan);flex-shrink:0;margin-top:3px}
+.vestibule .foot{margin-top:auto;font-size:11px;color:var(--muted);letter-spacing:.4px;
+  padding-top:20px;font-family:var(--mono)}
+/* 右侧：登录台 */
+.form-side{flex:1;padding:42px 42px 34px;display:flex;flex-direction:column}
+.form-side .step-cap{font-size:9px;letter-spacing:3px;color:var(--muted);font-weight:700;font-family:var(--mono)}
+.form-side h2{font-size:22px;color:var(--title);margin-top:7px;font-weight:700;letter-spacing:-.2px}
+.form-side .sub{font-size:12px;color:var(--muted);margin-top:5px}
+.form-side .rule{height:2px;background:var(--title);margin:16px 0 4px}
+input{width:100%;padding:11px 12px;border:1px solid var(--line-strong);border-radius:3px;
+  font-size:14px;margin-top:16px;font-family:inherit;background:var(--paper);color:var(--text);
+  transition:border-color .12s,box-shadow .12s,background .12s}
+input::placeholder{color:#9AA7B8}
+input:focus{outline:none;border-color:var(--cobalt);background:#fff;box-shadow:0 0 0 3px rgba(27,79,216,.12)}
+button{width:100%;margin-top:22px;padding:12px;border:1px solid transparent;border-radius:3px;
+  background:var(--cobalt);color:#fff;font-size:14px;font-weight:700;cursor:pointer;
+  font-family:inherit;letter-spacing:2px;box-shadow:0 2px 0 var(--cobalt-dark);
+  transition:transform .1s,box-shadow .1s,background .12s}
+button:hover{background:#2458E4;transform:translateY(-1px);box-shadow:0 3px 0 var(--cobalt-dark)}
+button:active{transform:translateY(1px);box-shadow:0 0 0 var(--cobalt-dark)}
+button:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:0 2px 0 var(--cobalt-dark)}
+.err{color:var(--err);font-size:13px;text-align:center;margin-top:14px;min-height:18px;font-weight:600}
+.hint{font-size:11px;color:var(--muted);margin-top:16px;line-height:1.8;text-align:center}
+.switch{text-align:center;margin-top:16px;font-size:13px;color:var(--muted)}
+.switch a{color:var(--cobalt);text-decoration:none;font-weight:700;cursor:pointer}
+.switch a:hover{color:var(--cobalt-dark);text-decoration:underline}
+.strength{font-size:11px;color:var(--muted);margin-top:6px;text-align:right;min-height:14px;font-family:var(--mono)}
+@media (max-width:760px){
+  .gate{flex-direction:column}
+  .vestibule{width:100%;padding:26px;border-right:none;border-bottom:1px solid var(--line)}
+  .vestibule::before{left:0;right:0;top:0;bottom:auto;width:auto;height:4px}
+  .vestibule .slogan,.vestibule ul{margin-top:18px}
+  .vestibule .foot{display:none}
+  .form-side{padding:30px 26px}
+}
+</style>
+</head>
+<body>
+<div class="gate">
+  <!-- 门厅 -->
+  <div class="vestibule">
+    <div class="badge">
+      <div class="mark" aria-hidden="true">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.6l8.2 4.7v9.4L12 21.4 3.8 16.7V7.3z"/><path d="M12 7.4l4.4 2.5v5.2L12 17.6l-4.4-2.5V9.9z"/><circle cx="12" cy="12" r="1.6" stroke="#9CC4FF"/></svg>
+      </div>
+      <div><h1>提示词工坊</h1><div class="en">PROMPT FORGE</div></div>
+    </div>
+    <div class="slogan">把一句话写清楚，<br>把一份文档编译成指令。</div>
+    <div class="feat-cap">CAPABILITIES</div>
+    <ul>
+      <li><span class="idx">01</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg><span>数据本地优先，默认不上云</span></li>
+      <li><span class="idx">02</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg><span>多家模型厂商，一套工作台</span></li>
+      <li><span class="idx">03</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg><span>每次打磨自动留档，版本可回滚</span></li>
+      <li><span class="idx">04</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg><span>静态体检 + 安全规则，零成本前置质检</span></li>
+    </ul>
+    <div class="foot">每个人独立工作区 · 管理员三重认证</div>
+  </div>
+
+  <!-- 登录台 -->
+  <div class="form-side">
+    <div class="step-cap" id="cap">ENTER THE FORGE</div>
+    <h2 id="h2">回到工作台</h2>
+    <div class="sub" id="sub">多用户版 · 每人独立工作区与数据</div>
+    <div class="rule"></div>
+
+    <form id="login-form">
+      <input type="text" id="u" placeholder="用户名" autofocus autocomplete="username">
+      <input type="password" id="pw" placeholder="密码" autocomplete="current-password">
+      <input type="password" id="pp" placeholder="平台口令（仅管理员需要，普通用户留空）" autocomplete="off">
+      <button type="submit" id="btn-login">进入工坊</button>
+    </form>
+
+    <form id="reg-form" style="display:none">
+      <input type="text" id="ru" placeholder="用户名（2-32 位中文/字母/数字/下划线）" autocomplete="username">
+      <input type="password" id="rpw" placeholder="密码（至少 8 位，含大小写/数字中 3 类）" autocomplete="new-password">
+      <div class="strength" id="rstrength"></div>
+      <input type="password" id="rpw2" placeholder="确认密码" autocomplete="new-password">
+      <button type="submit" id="btn-reg">开通工位</button>
+    </form>
+
+    <div class="err" id="err"></div>
+    <div class="switch" id="switch-line">还没有账号？<a id="to-reg">注册新账号</a></div>
+    <div class="hint" id="foot-hint">忘记口令请联系管理员重置；管理员登录需额外输入平台口令。</div>
+  </div>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+let mode = "login";
+
+// 会话过期提示
+if(new URLSearchParams(location.search).get("expired") === "1"){
+  $("err").textContent = "登录已过期或已在别处退出，请重新登录";
+}
+
+function setMode(m){
+  mode = m;
+  $("login-form").style.display = m === "login" ? "" : "none";
+  $("reg-form").style.display = m === "reg" ? "" : "none";
+  $("err").textContent = "";
+  $("h2").textContent = m === "reg" ? "开通新工位" : "回到工作台";
+  $("cap").textContent = m === "reg" ? "NEW MEMBER" : "ENTER THE FORGE";
+  $("sub").textContent = m === "reg" ? "注册新账号 · 独立工作区即刻开通" : "多用户版 · 每人独立工作区与数据";
+  $("switch-line").innerHTML = m === "reg"
+    ? '已有账号？<a id="to-login">去登录</a>'
+    : '还没有账号？<a id="to-reg">注册新账号</a>';
+  bindSwitch();
+  if(m === "reg"){ $("ru").focus(); } else { $("u").focus(); }
+}
+function bindSwitch(){
+  const r = document.getElementById("to-reg"), l = document.getElementById("to-login");
+  if(r) r.onclick = () => setMode("reg");
+  if(l) l.onclick = () => setMode("login");
+}
+bindSwitch();
+
+// 注册入口按服务端开关显隐
+fetch("/api/register-status", {credentials:"same-origin"}).then(x=>x.json()).then(d=>{
+  if(!d.open){ $("switch-line").style.display = "none"; }
+}).catch(()=>{});
+
+function pwHint(p){
+  if(!p) return "";
+  const cls = [/[a-z]/.test(p), /[A-Z]/.test(p), /\d/.test(p), /[^A-Za-z0-9]/.test(p)].filter(Boolean).length;
+  if(p.length < 8) return "至少 8 位";
+  if(cls < 3) return "需含大写、小写、数字中至少 3 类";
+  return "强度合格 ✓";
+}
+$("rpw").addEventListener("input", ()=>{ $("rstrength").textContent = pwHint($("rpw").value); });
+
+$("login-form").addEventListener("submit", async e=>{
+  e.preventDefault();
+  const btn = $("btn-login");
+  btn.disabled = true; btn.textContent = "验证中…";
+  try{
+    const res = await fetch("/api/login", {
+      method:"POST", headers:{"Content-Type":"application/json"}, credentials:"same-origin",
+      body: JSON.stringify({username: $("u").value.trim(), password: $("pw").value,
+                            passphrase: $("pp").value})
+    });
+    const d = await res.json().catch(()=>({}));
+    if(res.ok){ location.href = "/"; }
+    else{ $("err").textContent = d.error || "登录失败"; }
+  }catch(err){ $("err").textContent = "网络异常，请稍后重试"; }
+  finally{ btn.disabled = false; btn.textContent = "进入工坊"; }
+});
+
+$("reg-form").addEventListener("submit", async e=>{
+  e.preventDefault();
+  const p1 = $("rpw").value, p2 = $("rpw2").value;
+  if(p1 !== p2){ $("err").textContent = "两次输入的密码不一致"; return; }
+  const btn = $("btn-reg");
+  btn.disabled = true; btn.textContent = "开通中…";
+  try{
+    const res = await fetch("/api/register", {
+      method:"POST", headers:{"Content-Type":"application/json"}, credentials:"same-origin",
+      body: JSON.stringify({username: $("ru").value.trim(), password: p1})
+    });
+    const d = await res.json().catch(()=>({}));
+    if(res.ok){ location.href = "/"; }
+    else{ $("err").textContent = d.error || "注册失败"; }
+  }catch(err){ $("err").textContent = "网络异常，请稍后重试"; }
+  finally{ btn.disabled = false; btn.textContent = "开通工位"; }
+});
+</script>
+</body>
+</html>

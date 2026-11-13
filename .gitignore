@@ -1,0 +1,37 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+release/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ---- 运行数据与配置（含凭据，禁止入库）----
+/data/
+/output/
+*.db
+*.sqlite
+*.sqlite3
+*.log
+.env
+.env.*
+!.env.example
+
+# ---- 桌面打包产物 ----
+PromptForge.exe
+*.manifest
+
+# ---- OS / IDE ----
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

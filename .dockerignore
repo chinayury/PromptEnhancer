@@ -1,0 +1,25 @@
+# 构建上下文瘦身
+**/__pycache__
+**/*.py[cod]
+.pytest_cache
+.git
+.gitignore
+.gitlab-ci.yml
+.mimosa
+dist
+build
+tests
+docs
+data/*
+*.md
+Dockerfile
+docker-compose.yml
+.dockerignore
+deploy.sh
+deploy.bat
+build_exe.bat
+PromptForge.spec
+.env
+.env.example
+requirements.txt
+pyproject.toml

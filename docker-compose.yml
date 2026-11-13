@@ -1,0 +1,25 @@
+# 提示词工坊 PromptForge · Docker Web 版部署编排（浏览器直接访问）
+# 用法: ./deploy.sh (自动生成 .env 与随机口令) 或 docker compose up -d --build
+# 访问: http://服务器IP:6085  （首次需登录，账号见 .env 与启动日志）
+services:
+    promptforge:
+        container_name: promptforge
+        # PIP_INDEX_URL: 国内网络走清华镜像保证构建可用; 海外改回 https://pypi.org/simple
+        build:
+            context: .
+            args:
+                PIP_INDEX_URL: https://pypi.tuna.tsinghua.edu.cn/simple
+        image: promptforge:v0.1.0         # 推送私服时改成 你的仓库/promptforge:v0.1.0
+        ports:
+            - '6085:8000'
+        environment:
+            - TZ=Asia/Shanghai
+            # 平台口令：管理员登录的第三因子；留空则不校验（仅限内网）
+            - WEB_ACCESS_PASSWORD=${WEB_ACCESS_PASSWORD:-}
+            - WEB_ADMIN_PASSWORD=${WEB_ADMIN_PASSWORD:-}
+            # API Key 注入(避免明文落库;不设则在界面里填):
+            # - PROMPTFORGE_API_KEY=sk-xxxx
+        volumes:
+            # 账号库/历史数据库/日志/每用户工作区(与桌面版 data/ 同结构)
+            - './data:/app/data'
+        restart: always

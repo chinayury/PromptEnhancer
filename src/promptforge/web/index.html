@@ -1,0 +1,2081 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<title>提示词工坊 · PromptForge</title>
+<style>
+/* ============================================================
+   钴蓝工坊 · Cobalt Forge（v0.1.0 视觉重构 · 全浅色，无暗色主题）
+   ------------------------------------------------------------
+   与上一代「黄铜工坊 · Brass Workshop」的差异化设计决策：
+   1. 结构：238px 左侧竖排侧栏  →  吸顶横向导航台（页签 + 用户芯片右置）
+   2. 版式：衬线展示字体        →  全无衬线几何字体 + 等宽数字 + 宽字距微标签
+   3. 形态：12px 大圆角 + 柔影  →  4px 直角 + 硬偏移投影（"钢印"质感）
+   4. 配色：暖砂白/铜棕/熔金    →  冷雾白/钴蓝/青蓝（冷暖对调）
+   5. 图标：熔炉/铁砧意象       →  几何线性意象，stroke 1.7px
+   ============================================================ */
+:root{
+  /* ── 主色：钴蓝 ── */
+  --cobalt:#1B4FD8;          /* 主色 */
+  --cobalt-dark:#12359E;     /* 主色按下 / 硬投影 */
+  --cobalt-deep:#0A1F5C;     /* 深度强调 */
+  /* ── 点缀：青蓝 ── */
+  --cyan:#0E8FA8;
+  --cyan-soft:#E4F2F5;
+  /* ── 表面：冷雾白 ── */
+  --bg:#F0F3F8;              /* 页面底 */
+  --card:#FFFFFF;            /* 卡片底 */
+  --paper:#F6F8FC;           /* 次级表面 */
+  --line:#D9E0EA;            /* 边框 */
+  --line-strong:#BFC9DA;     /* 强边框 */
+  /* ── 文字 ── */
+  --title:#0F1A2E;           /* 标题：深墨蓝 */
+  --text:#2B3A50;            /* 正文 */
+  --muted:#6B7C93;           /* 次要 */
+  --soft:#EBF1FD;            /* 主色浅底 */
+  /* ── 语义色 ── */
+  --ok:#0F7A43; --ok-bg:#E9F6EE;
+  --warn:#8A5300; --warn-bg:#FCF3E4;
+  --err:#B3261E; --err-bg:#FCECEB;
+  /* ── 投影：硬偏移，无彩色弥散 ── */
+  --shadow:0 1px 0 var(--line);
+  --raise:0 2px 0 var(--cobalt-dark);
+  --raise-sm:0 1px 0 var(--cobalt-dark);
+  --mono:"Cascadia Mono","Consolas","SFMono-Regular","Liberation Mono",monospace;
+  --sans:"Segoe UI","HarmonyOS Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:var(--sans);background:var(--bg);color:var(--text);font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased}
+svg{display:block}
+::selection{background:var(--cobalt);color:#fff}
+
+/* ═══════════ 吸顶导航台（替代原左侧竖排侧栏） ═══════════ */
+.topbar{position:sticky;top:0;z-index:40;display:flex;align-items:stretch;gap:0;
+  background:var(--card);border-bottom:1px solid var(--line-strong);
+  box-shadow:0 1px 0 rgba(15,26,46,.03)}
+.brand{display:flex;align-items:center;gap:11px;padding:0 20px;flex-shrink:0;
+  border-right:1px solid var(--line)}
+.brand-mark{display:flex;align-items:center;gap:11px}
+.brand-badge{width:38px;height:38px;border-radius:5px;background:var(--cobalt);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+  box-shadow:var(--raise-sm)}
+.brand h1{font-size:16px;font-weight:700;color:var(--title);letter-spacing:.5px;line-height:1.25;white-space:nowrap}
+.brand .sub{font-size:9px;letter-spacing:2.6px;color:var(--cobalt);margin-top:2px;font-weight:700;font-family:var(--mono)}
+.brand .tagline{display:none;font-size:11px;color:var(--muted);margin-left:16px;padding-left:16px;
+  border-left:1px solid var(--line);white-space:nowrap;font-weight:500}
+.nav-tabs{display:flex;align-items:stretch;flex:1;min-width:0;overflow-x:auto}
+.nav-label{display:none}
+.nav-btn{display:flex;align-items:center;gap:8px;padding:0 15px;border:none;
+  background:transparent;color:var(--muted);font-size:13px;cursor:pointer;
+  font-family:inherit;font-weight:600;white-space:nowrap;position:relative;
+  border-bottom:2px solid transparent;transition:color .12s,background .12s}
+.nav-btn .no{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.5px;
+  color:var(--line-strong);transition:color .12s}
+.nav-btn svg{color:var(--muted);flex-shrink:0;transition:color .12s}
+.nav-btn:hover{color:var(--cobalt);background:var(--soft)}
+.nav-btn:hover svg,.nav-btn:hover .no{color:var(--cobalt)}
+.nav-btn.active{color:var(--cobalt);border-bottom-color:var(--cobalt);background:var(--soft)}
+.nav-btn.active svg{color:var(--cobalt)}
+.nav-btn.active .no{color:var(--cobalt)}
+.nav-btn#nav-admin,.nav-btn#nav-export{border-left:1px solid var(--line)}
+.nav-btn#nav-export{margin-left:auto}
+/* 顶栏右侧：用户芯片 */
+.top-user{display:flex;align-items:center;gap:14px;padding:0 18px;flex-shrink:0;
+  border-left:1px solid var(--line)}
+.user-chip{display:flex;align-items:center;gap:9px}
+.avatar{width:32px;height:32px;border-radius:4px;background:var(--cobalt);color:#fff;
+  display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;
+  font-family:var(--mono);box-shadow:var(--raise-sm)}
+.user-chip .nm{color:var(--title);font-weight:700;font-size:13px;line-height:1.2;white-space:nowrap}
+.user-chip .rl{font-size:10px;color:var(--cobalt);letter-spacing:.8px;font-weight:600;font-family:var(--mono)}
+.top-user .metaline{display:none;align-items:center;gap:6px;font-size:11px;color:var(--muted);
+  font-weight:600;white-space:nowrap}
+.top-user .metaline svg{color:var(--cyan);flex-shrink:0}
+.top-user .meta-links{display:flex;align-items:center;gap:7px;font-size:12px;white-space:nowrap}
+.top-user .meta-links a{color:var(--muted);text-decoration:none;cursor:pointer;font-weight:600}
+.top-user .meta-links a:hover{color:var(--cobalt)}
+.top-user .meta-links .sep{color:var(--line-strong)}
+.top-ver{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.4px;
+  padding:3px 8px;border:1px solid var(--line);border-radius:3px;background:var(--paper);
+  max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 宽屏：展开品牌标语与安全提示 */
+@media (min-width:1500px){
+  .brand .tagline{display:block}
+  .top-user .metaline{display:flex}
+}
+
+/* ═══════════ 主区 ═══════════ */
+.layout{display:block;min-height:100vh}
+.main{padding:20px 24px 16px;min-width:0;display:flex;flex-direction:column}
+/* 页面头版：面包屑 + 标题 + 编号水印 */
+.masthead{display:flex;align-items:flex-end;gap:20px;padding-bottom:14px;
+  border-bottom:2px solid var(--title)}
+.masthead .mh-text{flex:1;min-width:0}
+.crumb{display:flex;align-items:center;gap:8px;font-size:10px;letter-spacing:2.4px;
+  color:var(--muted);font-weight:700;font-family:var(--mono)}
+.crumb .no{display:inline-flex;align-items:center;justify-content:center;min-width:24px;height:17px;
+  background:var(--cobalt);color:#fff;border-radius:2px;font-size:10px;padding:0 5px;font-weight:700}
+.page-title{font-size:24px;font-weight:700;color:var(--title);margin-top:7px;letter-spacing:-.2px;line-height:1.2}
+.page-desc{font-size:12.5px;color:var(--muted);margin-top:4px}
+.masthead .mh-no{font-family:var(--mono);font-size:64px;font-weight:700;line-height:.85;
+  color:transparent;-webkit-text-stroke:1.5px var(--line-strong);letter-spacing:-2px;flex-shrink:0}
+
+/* ═══════════ 卡片：直角 + 左色条 ═══════════ */
+.card{background:var(--card);border:1px solid var(--line);border-radius:4px;
+  padding:16px 18px;margin-top:14px;box-shadow:var(--shadow);position:relative}
+.card > h3{font-size:15px;color:var(--title);display:flex;align-items:center;gap:10px;
+  font-weight:700;letter-spacing:.2px;padding-left:12px;position:relative}
+.card > h3::before{content:"";position:absolute;left:0;top:50%;transform:translateY(-50%);
+  width:3px;height:16px;background:var(--cobalt);border-radius:1px}
+.card > h3 .step{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;
+  background:var(--cobalt);color:#fff;font-size:11px;font-family:var(--mono);font-weight:700;
+  border-radius:2px;flex-shrink:0;box-shadow:var(--raise-sm);padding-left:0}
+.card .hint{font-size:12px;color:var(--muted);font-weight:400}
+.page{display:none;flex:1;min-height:0}
+.page.active{display:flex;flex-direction:column}
+
+/* ═══════════ 表单：方角 + 聚焦光环 ═══════════ */
+.fields{display:grid;grid-template-columns:repeat(4,1fr);gap:12px 14px;margin-top:12px}
+.field{display:flex;flex-direction:column;min-width:0}
+.field.wide{grid-column:span 2}
+.field.full{grid-column:1/-1}
+.field label{font-size:11px;color:var(--muted);margin-bottom:5px;letter-spacing:.6px;
+  display:flex;justify-content:space-between;align-items:baseline;font-weight:600}
+.field label b{color:var(--cobalt);font-weight:700}
+input[type=text],input[type=password],input[type=number],select,textarea{
+  width:100%;padding:9px 11px;border:1px solid var(--line-strong);border-radius:3px;
+  font-size:13px;font-family:inherit;background:var(--paper);color:var(--text);
+  transition:border-color .12s,box-shadow .12s,background .12s}
+input::placeholder,textarea::placeholder{color:#9AA7B8}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--cobalt);background:#fff;
+  box-shadow:0 0 0 3px rgba(27,79,216,.12)}
+select{cursor:pointer;appearance:none;
+  background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%236B7C93' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 10px center;padding-right:28px}
+textarea{resize:vertical;line-height:1.7}
+input[type=checkbox]{accent-color:var(--cobalt);width:auto}
+
+/* ═══════════ 按钮：钢印硬投影 ═══════════ */
+.btn{display:inline-flex;align-items:center;gap:7px;padding:9px 15px;border-radius:3px;
+  border:1px solid transparent;font-size:13px;cursor:pointer;font-family:inherit;
+  background:var(--cobalt);color:#fff;font-weight:600;letter-spacing:.2px;
+  box-shadow:var(--raise);transition:transform .1s,box-shadow .1s,background .12s}
+.btn:hover{background:#2458E4;transform:translateY(-1px);box-shadow:0 3px 0 var(--cobalt-dark)}
+.btn:active{transform:translateY(1px);box-shadow:0 0 0 var(--cobalt-dark)}
+.btn:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:var(--raise)}
+.btn.ghost{background:var(--card);color:var(--cobalt);border-color:var(--line-strong);box-shadow:0 1px 0 var(--line-strong)}
+.btn.ghost:hover{border-color:var(--cobalt);background:var(--soft);box-shadow:0 2px 0 var(--cobalt)}
+.btn.sm{padding:5px 11px;font-size:12px;border-radius:3px}
+.btn.danger{background:var(--card);color:var(--err);border-color:#E4B7B3;box-shadow:0 1px 0 #E4B7B3}
+.btn.danger:hover{background:var(--err-bg);border-color:var(--err);box-shadow:0 2px 0 var(--err)}
+kbd{font-family:var(--mono)}
+.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0}
+
+/* ═══════════ 双栏：输入 / 产出 ═══════════ */
+.cols{display:grid;grid-template-columns:1fr 52px 1fr;gap:10px;flex:1;min-height:0;
+  margin-top:12px;align-items:stretch}
+.pane{display:flex;flex-direction:column;min-height:240px;background:var(--card);
+  border:1px solid var(--line);border-radius:4px;padding:14px;box-shadow:var(--shadow)}
+.pane h4{font-size:11px;letter-spacing:1.8px;color:var(--muted);font-weight:700;
+  display:flex;align-items:center;gap:8px;margin-bottom:8px;font-family:var(--mono)}
+.pane h4 b{color:var(--cobalt);font-family:var(--mono);font-size:12px}
+.pane h4 .count{margin-left:auto;font-weight:400;color:var(--muted);letter-spacing:0;font-family:var(--mono)}
+.pane textarea{flex:1;min-height:200px;border:none;background:transparent;padding:4px 2px;
+  font-size:14px;line-height:1.8;border-radius:0}
+.pane textarea:focus{outline:none;box-shadow:none;background:transparent}
+.pane.out h4 b{color:var(--cyan)}
+.pane-divider{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px}
+.pane-divider .ring{width:40px;height:40px;border-radius:3px;border:1px solid var(--cobalt);
+  background:var(--soft);display:flex;align-items:center;justify-content:center;color:var(--cobalt);
+  box-shadow:var(--raise-sm)}
+.pane-divider .line{flex:1;width:1px;background:var(--line-strong)}
+
+/* ═══════════ 提示词体检条 ═══════════ */
+.lint-box{margin-top:12px;border:1px solid var(--line);border-radius:4px;background:var(--card);
+  padding:12px 14px;display:flex;gap:16px;align-items:flex-start;box-shadow:var(--shadow);
+  border-left:3px solid var(--cobalt)}
+.lint-score{flex-shrink:0;width:62px;text-align:center;border-right:1px solid var(--line);padding-right:12px}
+.lint-score .n{font-family:var(--mono);font-size:28px;font-weight:700;color:var(--cobalt);
+  font-variant-numeric:tabular-nums;line-height:1}
+.lint-score .t{font-size:9px;letter-spacing:1.8px;color:var(--muted);margin-top:3px;font-family:var(--mono);font-weight:700}
+.lint-issues{flex:1;display:flex;flex-wrap:wrap;gap:6px;align-content:flex-start}
+.lint-dim{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
+.lint-dim > b{font-size:10px;letter-spacing:1.2px;color:var(--muted);font-family:var(--mono);
+  font-weight:700;flex-shrink:0;padding:2px 6px;background:var(--paper);border:1px solid var(--line);border-radius:2px}
+.lint-chip{display:inline-flex;align-items:center;gap:6px;border-radius:2px;padding:3px 9px;
+  font-size:11px;border:1px solid transparent;font-weight:600;line-height:1.5}
+.lint-chip.warn{background:var(--warn-bg);color:var(--warn);border-color:#EAD9B8}
+.lint-chip.info{background:var(--soft);color:var(--cobalt-deep);border-color:#C9D8F6}
+.lint-chip.error{background:var(--err-bg);color:var(--err);border-color:#EFC6C2}
+.lint-ok{font-size:12px;color:var(--ok);display:flex;align-items:center;gap:6px;font-weight:600}
+
+/* ═══════════ 场景预设 + 最近复用 ═══════════ */
+.preset-row{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}
+.preset-row .cap{font-size:10px;letter-spacing:1.6px;color:var(--muted);font-weight:700;font-family:var(--mono)}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center}
+.chip{border:1px solid var(--line-strong);background:var(--card);border-radius:2px;
+  padding:4px 11px;font-size:12px;color:var(--text);cursor:pointer;max-width:240px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;
+  transition:border-color .12s,color .12s,background .12s}
+.chip:hover{border-color:var(--cobalt);color:var(--cobalt);background:var(--soft)}
+
+/* ═══════════ 状态栏：系统日志条 ═══════════ */
+.statusbar{margin-top:14px;background:var(--card);border:1px solid var(--line);border-radius:3px;
+  display:flex;align-items:center;overflow:hidden;box-shadow:var(--shadow)}
+.statusbar .anchor{width:4px;align-self:stretch;background:var(--cobalt)}
+.statusbar .dot{width:7px;height:7px;border-radius:50%;background:var(--cyan);margin:0 10px 0 13px;
+  animation:pulse 1.6s ease-in-out infinite;flex-shrink:0}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.8)}}
+.statusbar .msg{padding:10px 0;font-size:12px;color:var(--text);font-family:var(--mono)}
+.statusbar .msg::before{content:"› ";color:var(--cobalt);font-weight:700}
+
+/* ═══════════ 统计带 ═══════════ */
+.stats{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--cyan);
+  border-radius:3px;padding:10px 14px;font-size:12px;color:var(--text);margin-top:14px;
+  display:flex;align-items:center;gap:10px;font-family:var(--mono)}
+.stats svg{color:var(--cyan);flex-shrink:0}
+
+/* ═══════════ 历史记录卡 ═══════════ */
+.hist-list{flex:1;overflow-y:auto;background:var(--card);border:1px solid var(--line);
+  border-radius:4px;padding:10px;margin-top:12px;box-shadow:var(--shadow)}
+.hist-list .empty{color:var(--muted);padding:18px 12px;font-size:13px;text-align:center;font-family:var(--mono)}
+.rec{display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--line);
+  border-radius:3px;margin-bottom:8px;background:var(--paper);transition:border-color .12s,background .12s}
+.rec:hover{border-color:var(--cobalt);background:#fff}
+.rec .fav{border:none;background:transparent;cursor:pointer;color:var(--line-strong);padding:4px;transition:color .12s}
+.rec .fav.on{color:var(--cyan)}
+.rec .info{flex:1;min-width:0;font-size:12px}
+.rec .info .meta{color:var(--text);display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-family:var(--mono)}
+.rec .info .preview{color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rec .acts{display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end}
+.obs{width:7px;height:7px;border-radius:1px;display:inline-block;flex-shrink:0}
+.obs.ok{background:var(--ok)} .obs.err{background:var(--err)}
+
+/* ═══════════ forge 目录树 ═══════════ */
+.outline-list{max-height:260px;overflow-y:auto;border:1px solid var(--line);border-radius:3px;
+  padding:8px;margin-top:10px;background:var(--paper)}
+.outline-item{display:flex;align-items:center;gap:8px;padding:4px 8px;border-radius:2px;font-size:13px}
+.outline-item:hover{background:var(--soft)}
+.outline-item input{width:auto;accent-color:var(--cobalt)}
+.outline-item .num{color:var(--cobalt);font-weight:700;min-width:44px;font-family:var(--mono);font-size:12px}
+.outline-item.l2{padding-left:28px}
+.outline-item.l3{padding-left:48px}
+.outline-item.unpick{color:var(--muted)}
+.detect{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;font-size:12px;color:var(--muted);font-family:var(--mono)}
+.detect b{color:var(--cobalt)}
+pre.output{background:var(--paper);border:1px solid var(--line);border-left:3px solid var(--cobalt);
+  border-radius:3px;padding:14px;font-size:12.5px;line-height:1.7;white-space:pre-wrap;
+  word-break:break-word;font-family:var(--mono);max-height:420px;overflow-y:auto;color:var(--title)}
+.report{font-size:12px;color:var(--muted);margin-top:8px;font-family:var(--mono)}
+.warn-box{background:var(--warn-bg);border:1px solid #EAD9B8;border-left:3px solid var(--warn);
+  color:var(--warn);border-radius:3px;padding:10px 14px;font-size:12.5px;margin-top:10px;white-space:pre-wrap}
+
+/* ═══════════ 管理后台 ═══════════ */
+.adm-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-top:14px}
+.adm-stat{background:var(--card);border:1px solid var(--line);border-radius:4px;padding:12px 14px;
+  box-shadow:var(--shadow);border-top:2px solid var(--cobalt)}
+.adm-stat .k{font-size:10px;letter-spacing:1.4px;color:var(--muted);display:flex;align-items:center;
+  gap:6px;font-weight:700;font-family:var(--mono)}
+.adm-stat .v{font-size:24px;font-weight:700;color:var(--title);margin-top:6px;
+  font-variant-numeric:tabular-nums;font-family:var(--mono)}
+.adm-stat .s{font-size:11px;color:var(--muted);margin-top:2px}
+.adm-table{width:100%;border-collapse:collapse;font-size:13px;min-width:860px}
+.adm-table th{text-align:left;font-size:10px;letter-spacing:1.4px;color:var(--muted);font-weight:700;
+  padding:10px;border-bottom:2px solid var(--line-strong);font-family:var(--mono);background:var(--paper)}
+.adm-table td{padding:10px;border-bottom:1px solid var(--line);vertical-align:middle}
+.adm-table tr:last-child td{border-bottom:none}
+.adm-table tr.off td{opacity:.5}
+.adm-seg{border:1px solid var(--line-strong);background:var(--card);color:var(--text);
+  border-radius:3px;padding:6px 13px;font-size:13px;cursor:pointer;font-family:inherit;font-weight:600}
+.adm-seg:hover{border-color:var(--cobalt);color:var(--cobalt)}
+.adm-seg.active{background:var(--cobalt);border-color:var(--cobalt);color:#fff;box-shadow:var(--raise-sm)}
+.tag{display:inline-block;padding:1px 8px;border-radius:2px;font-size:11px;font-weight:700;font-family:var(--mono)}
+.tag-ok{background:var(--ok-bg);color:var(--ok)}.tag-warn{background:var(--warn-bg);color:var(--warn)}
+.tag-err{background:var(--err-bg);color:var(--err)}
+
+/* ═══════════ 模态 ═══════════ */
+.modal-mask{position:fixed;inset:0;background:rgba(15,26,46,.45);backdrop-filter:blur(2px);
+  display:none;align-items:center;justify-content:center;z-index:50;padding:20px}
+.modal-mask.show{display:flex}
+.modal{background:var(--card);border:1px solid var(--line-strong);border-radius:4px;
+  padding:22px 24px;width:440px;max-width:94vw;box-shadow:0 16px 0 -8px rgba(15,26,46,.06),0 24px 60px rgba(15,26,46,.22);
+  border-top:3px solid var(--cobalt)}
+.modal h3{font-size:16px;color:var(--title);margin-bottom:10px;display:flex;align-items:center;
+  gap:10px;font-weight:700}
+.modal p{font-size:13px;color:var(--text);line-height:1.75;white-space:pre-wrap}
+.modal .acts{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}
+
+/* ═══════════ 双版对比判定条 ═══════════ */
+.ab-verdict{border:1px solid var(--line);border-left:3px solid var(--cyan);border-radius:3px;
+  background:var(--card);padding:10px 14px;display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap}
+.ab-verdict .vtag{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.8px;
+  padding:3px 9px;border-radius:2px;white-space:nowrap;flex-shrink:0}
+.ab-verdict .vtag.a_wins{background:var(--ok-bg);color:var(--ok)}
+.ab-verdict .vtag.b_wins{background:var(--ok-bg);color:var(--ok)}
+.ab-verdict .vtag.tie{background:var(--soft);color:var(--cobalt-deep)}
+.ab-verdict .vtag.insufficient{background:var(--warn-bg);color:var(--warn)}
+.ab-verdict .vtext{flex:1;min-width:200px;font-size:12.5px;color:var(--text);line-height:1.7}
+.ab-verdict .vtext b{color:var(--title)}
+.ab-verdict .vmetrics{display:flex;gap:14px;flex-wrap:wrap;font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:4px}
+.ab-verdict .vmetrics b{color:var(--cobalt)}
+
+/* ═══════════ 版本链 / diff ═══════════ */.ver-item{display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--line);
+  border-radius:3px;margin-top:6px;font-size:12px;background:var(--paper);flex-wrap:wrap}
+.ver-item:hover{border-color:var(--line-strong)}
+.ver-item.cur{border-color:var(--cobalt);background:var(--soft)}
+.ver-item .vno{font-weight:700;color:var(--cobalt);min-width:36px;font-family:var(--mono)}
+.ver-item .vmsg{color:var(--text);flex:1;min-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ver-item .vmeta{color:var(--muted);font-family:var(--mono);font-size:11px}
+.tag-src{display:inline-block;padding:1px 8px;border-radius:2px;font-size:11px;font-weight:700;
+  background:var(--soft);color:var(--cobalt-deep);font-family:var(--mono)}
+.tag-src.enhance{background:var(--cyan-soft);color:#075F72}
+.tag-cur{display:inline-block;padding:1px 8px;border-radius:2px;font-size:11px;font-weight:700;
+  background:var(--cobalt);color:#fff;font-family:var(--mono)}
+.diff-box{border:1px solid var(--line);border-radius:3px;overflow:auto;max-height:400px;
+  margin-top:10px;background:var(--card)}
+.diff-table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12px}
+.diff-table td{vertical-align:top;padding:3px 8px;border-bottom:1px solid var(--line);
+  white-space:pre-wrap;word-break:break-word;width:50%}
+.diff-table td.added{background:#E9F6EE;color:#14532D}
+.diff-table td.removed{background:#FCECEB;color:#7F1D1D}
+.diff-table td.unchanged{color:var(--text)}
+.diff-table td ins{background:#BFE8CB;text-decoration:none;border-radius:2px;padding:0 1px}
+.diff-table td del{background:#F3B4B0;text-decoration:none;border-radius:2px;padding:0 1px}
+.slot-stats{font-size:12px;color:var(--muted);margin-top:6px;font-family:var(--mono)}
+.score-tag{display:inline-block;padding:2px 8px;border-radius:2px;background:var(--cyan-soft);
+  color:#075F72;font-size:11px;margin-left:6px;font-family:var(--mono);font-weight:700}
+
+/* ═══════════ Toast ═══════════ */
+#toast-wrap{position:fixed;right:18px;bottom:18px;display:flex;flex-direction:column;gap:8px;z-index:70}
+.toast{background:var(--title);color:#EAF0FA;border-radius:3px;padding:10px 14px;font-size:12px;
+  max-width:320px;box-shadow:0 4px 0 rgba(15,26,46,.18),0 10px 30px rgba(15,26,46,.25);
+  animation:toast-in .18s ease-out;border-left:3px solid var(--cyan);font-weight:500}
+.toast.ok{background:var(--ok);border-left-color:#8FE0AE}
+.toast.err{background:var(--err);border-left-color:#F3B4B0}
+@keyframes toast-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* ═══════════ 常见问题 ═══════════ */
+.faq{margin-top:12px;border:1px dashed var(--line-strong);border-radius:3px;padding:4px 12px;background:var(--card)}
+.faq summary{cursor:pointer;font-size:12px;color:var(--cobalt);padding:6px 0;font-weight:700;letter-spacing:.4px}
+.faq summary:hover{color:var(--cobalt-dark)}
+.faq .faq-body{font-size:12px;color:var(--text);padding:2px 4px 10px;line-height:1.8}
+.faq .faq-body code{font-family:var(--mono);background:var(--soft);padding:1px 4px;border-radius:2px;color:var(--cobalt-deep)}
+
+/* ═══════════ 响应式 ═══════════ */
+@media (max-width:1180px){ .fields{grid-template-columns:repeat(2,1fr)} .field.wide{grid-column:span 2} }
+@media (max-width:960px){
+  .topbar{flex-wrap:wrap}
+  .brand{padding:10px 14px;border-right:none}
+  .brand .sub{display:none}
+  .nav-tabs{order:3;width:100%;border-top:1px solid var(--line);overflow-x:auto}
+  .nav-btn{padding:10px 13px;border-bottom:2px solid transparent}
+  .top-user{border-left:none;padding:8px 14px;margin-left:auto}
+  .top-ver{display:none}
+  .masthead .mh-no{font-size:40px}
+  .main{padding:16px 14px}
+  .cols{grid-template-columns:1fr}
+  .pane-divider{flex-direction:row;height:40px}
+  .pane-divider .line{width:auto;height:1px;flex:1}
+  .fields{grid-template-columns:1fr}
+  .field.wide,.field.full{grid-column:auto}
+}
+@media (max-width:620px){
+  .user-chip .nm,.user-chip .rl{display:none}
+  .top-user .meta-links .sep{display:none}
+  .masthead .mh-no{display:none}
+}
+</style>
+</head>
+<body>
+<div class="layout">
+  <!-- ══ 吸顶导航台（替代原左侧竖排侧栏） ══ -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">
+        <div class="brand-badge" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.6l8.2 4.7v9.4L12 21.4 3.8 16.7V7.3z"/><path d="M12 7.4l4.4 2.5v5.2L12 17.6l-4.4-2.5V9.9z"/><circle cx="12" cy="12" r="1.6" stroke="#9CC4FF"/></svg>
+        </div>
+        <div>
+          <h1>提示词工坊</h1>
+          <div class="sub">PROMPT FORGE</div>
+        </div>
+      </div>
+      <div class="tagline">把一句话编译成可执行的指令</div>
+    </div>
+
+    <nav class="nav-tabs">
+      <button class="nav-btn active" data-page="single"><span class="no">01</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l9.5-9.5"/><path d="M14.6 3.2l1.3 3.3 3.3 1.3-3.3 1.3-1.3 3.3-1.3-3.3L10 7.8l3.3-1.3z"/><path d="M19.4 15.2l.7 1.7 1.7.7-1.7.7-.7 1.7-.7-1.7-1.7-.7 1.7-.7z"/></svg>
+        单条提示增强</button>
+      <button class="nav-btn" data-page="batch"><span class="no">02</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="7.5" height="7.5" rx="1"/><rect x="13.5" y="4" width="7.5" height="7.5" rx="1"/><rect x="3" y="13.5" width="7.5" height="6.5" rx="1"/><rect x="13.5" y="13.5" width="7.5" height="6.5" rx="1"/></svg>
+        批量提示增强</button>
+      <button class="nav-btn" data-page="history"><span class="no">03</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3.5" width="18" height="5" rx="1"/><path d="M4.8 8.5v10a1.5 1.5 0 0 0 1.5 1.5h11.4a1.5 1.5 0 0 0 1.5-1.5v-10"/><path d="M9.5 13h5"/><path d="M9.5 16.5h3"/></svg>
+        打磨档案</button>
+      <button class="nav-btn" data-page="forge"><span class="no">04</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.4l8.4 4.8v9.6L12 21.6 3.6 16.8V7.2z"/><circle cx="12" cy="12" r="3.1"/><path d="M12 5.2v2.4M12 16.4v2.4M5.2 12h2.4M16.4 12h2.4"/></svg>
+        五槽指令铸造</button>
+      <button class="nav-btn" id="nav-export" style="display:none">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11.5"/><path d="M7.5 10.5L12 15l4.5-4.5"/><path d="M4 16.5v2.5a1.5 1.5 0 0 0 1.5 1.5h13a1.5 1.5 0 0 0 1.5-1.5v-2.5"/></svg>
+        导出我的数据</button>
+      <button class="nav-btn" id="nav-admin" data-page="admin" style="display:none">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.8l8 3.1v5.6c0 4.6-3.2 8.1-8 9.4-4.8-1.3-8-4.8-8-9.4V5.9z"/><path d="M8.8 12.1l2.2 2.2 4.2-4.6"/></svg>
+        工坊管理台</button>
+    </nav>
+
+    <div class="top-user">
+      <div class="top-ver" id="foot-ver"></div>
+      <div class="metaline">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21.5s7.5-3.4 7.5-9.4V4.8L12 2 4.5 4.8v7.3c0 6 7.5 9.4 7.5 9.4z"/></svg>
+        本地优先 · 账号隔离
+      </div>
+      <div class="user-chip">
+        <div class="avatar" id="foot-avatar">·</div>
+        <div><div class="nm" id="foot-user">—</div><div class="rl" id="foot-role">工坊成员</div></div>
+      </div>
+      <div class="meta-links"><a href="#" id="chpwd-link">修改密码</a><span class="sep">·</span><a href="#" id="logout-link">退出登录</a></div>
+    </div>
+  </header>
+
+  <!-- ══ 主区 ══ -->
+  <main class="main">
+    <div class="masthead">
+      <div class="mh-text">
+        <div class="crumb"><span>PROMPT FORGE</span><span>›</span><span id="page-crumb">单条提示增强</span></div>
+        <div class="page-title" id="page-title">单条提示增强</div>
+        <div class="page-desc" id="page-desc">一句话入炉，熔去冗余，淬出可直接执行的提示词</div>
+      </div>
+      <div class="mh-no" id="page-no">01</div>
+    </div>
+
+    <!-- 连接配置 · 铸炉参数 -->
+    <div class="card" id="cfg-card">
+      <h3>连接参数 <span class="hint" style="margin-left:auto">自动保存，下次打开自动加载</span></h3>
+      <div class="fields">
+        <div class="field"><label for="cfg-provider">厂商</label><select id="cfg-provider"></select></div>
+        <div class="field wide"><label for="cfg-key">API Key</label><div style="display:flex;gap:8px"><input type="password" id="cfg-key" placeholder="粘贴厂商密钥"><button class="btn ghost sm" id="cfg-toggle-key" type="button">显示</button></div></div>
+        <div class="field"><label for="cfg-model">模型</label><input type="text" id="cfg-model" placeholder="model name"></div>
+        <div class="field full"><label for="cfg-url">Base URL</label><input type="text" id="cfg-url" placeholder="https://.../v1"></div>
+        <div class="field"><label for="cfg-style">增强风格</label><select id="cfg-style"></select></div>
+        <div class="field"><label for="cfg-temp">温度</label><select id="cfg-temp"></select></div>
+        <div class="field"><label for="cfg-maxtok">最大长度</label><select id="cfg-maxtok"></select></div>
+        <div class="field" style="justify-content:flex-end;align-items:flex-end"><span class="hint" id="cfg-env-note" style="display:none">（API Key 已由环境变量注入）</span></div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:12px;align-items:center">
+        <button class="btn" id="cfg-save"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg>保存配置</button>
+      </div>
+    </div>
+
+    <!-- 单条增强 -->
+    <section class="page active" id="page-single">
+      <div class="bar">
+        <button class="btn" id="btn-enhance"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l9.5-9.5"/><path d="M14.6 3.2l1.3 3.3 3.3 1.3-3.3 1.3-1.3 3.3-1.3-3.3L10 7.8l3.3-1.3z"/></svg>增强提示词<kbd style="opacity:.7;font-size:10px;border:1px solid rgba(255,255,255,.35);border-radius:2px;padding:0 4px">Ctrl+↵</kbd></button>
+        <button class="btn ghost" id="btn-ab"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1"/><rect x="13.5" y="3.5" width="7" height="7" rx="1"/><rect x="3.5" y="13.5" width="7" height="7" rx="1"/><rect x="13.5" y="13.5" width="7" height="7" rx="1"/></svg>双版对比</button>
+        <button class="btn ghost" id="btn-copy-result"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11.5" height="11.5" rx="1.5"/><path d="M5.5 15V5.5A1.5 1.5 0 0 1 7 4h9.5"/></svg>复制结果</button>
+        <button class="btn ghost" id="btn-restore"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 12a8.5 8.5 0 1 1-2.5-6"/><path d="M20.5 3.5v5h-5"/></svg>还原输入</button>
+        <button class="btn ghost" id="btn-clear-single"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 6.5h17"/><path d="M9 6.5V4h6v2.5"/><path d="M5.5 6.5l1.2 13.2A1.8 1.8 0 0 0 8.5 21h7a1.8 1.8 0 0 0 1.8-1.3L18.5 6.5"/><path d="M10 10v7M14 10v7"/></svg>清空输入</button>
+        <button class="btn ghost" id="btn-save-version" style="display:none"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4.5v15"/><path d="M4.5 12h15"/><circle cx="12" cy="12" r="9.2"/></svg>存为版本</button>
+      </div>
+
+      <!-- 提示词体检 -->
+      <div class="lint-box" id="lint-box">
+        <div class="lint-score"><div class="n" id="lint-score">—</div><div class="t">体检分</div></div>
+        <div class="lint-issues" id="lint-issues"><span class="hint" style="font-size:12px;color:var(--muted)">输入提示词后自动体检：结构槽位 / 模糊措辞 / 安全风险 / 长度异常 / 未填变量</span></div>
+      </div>
+
+      <!-- 场景预设 + 最近复用 -->
+      <div class="preset-row">
+        <span class="cap">场景预设</span>
+        <select id="preset-select" style="width:230px">
+          <option value="">选择一个场景快速起手…</option>
+          <option value="code">代码助手 · 让回答带约束与边界</option>
+          <option value="write">写作润色 · 保留原意提升表达</option>
+          <option value="translate">专业翻译 · 术语准确语气一致</option>
+          <option value="sql">SQL 生成 · 先明确表结构再出语句</option>
+          <option value="review">代码评审 · 缺陷分级与修复建议</option>
+        </select>
+        <span class="hint" style="font-size:11px">选择后填入输入框，可继续编辑</span>
+      </div>
+      <div class="chips" id="recent-chips"><span class="cap" style="font-size:10px;letter-spacing:1.6px;color:var(--muted);font-weight:700;font-family:var(--mono)">最近复用</span></div>
+
+      <div class="cols">
+        <div class="pane"><h4><b>IN</b> 原始提示<span class="count" id="single-in-count">0 字</span></h4><textarea id="single-in" placeholder="把要打磨的提示词放进这里…&#10;例如：帮我写一个登录页&#10;Ctrl+Enter 直接增强"></textarea></div>
+        <div class="pane-divider"><div class="line"></div><div class="ring"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12h15"/><path d="M13 6l6 6-6 6"/></svg></div><div class="line"></div></div>
+        <div class="pane out"><h4><b>OUT</b> 增强结果<span class="count" id="single-out-count">0 字</span></h4><textarea id="single-out" readonly placeholder="增强成果将在此呈现…"></textarea></div>
+      </div>
+
+      <details class="faq"><summary>常见问题 · 增强失败怎么办</summary><div class="faq-body">
+        <b>鉴权失败（400）</b>：API Key 无效或无权限——检查「连接参数」里的 Key 是否过期、是否误粘了引号。<br>
+        <b>触发限流（429）</b>：厂商侧流量保护——等待 1 分钟再试，或换更高配额的模型/账号。<br>
+        <b>模型返回为空</b>：已自动重试 2 次仍为空——换一个模型，或检查 Base URL 是否指向了 <code>/chat/completions</code> 兼容端点。<br>
+        <b>超时（504）</b>：请求超过 90 秒——网络拥塞或模型排队，稍后重试。<br>
+        <b>质量偏低</b>：结果与原文相似度过高会被标记——把输入写得更具体（背景/目标/约束/格式）再试。
+      </div></details>
+    </section>
+
+    <!-- 批量增强 -->
+    <section class="page" id="page-batch">
+      <div class="card">
+        <h3>批量入炉 <span class="hint">每行一条提示词，空行自动跳过（单次最多 200 条）</span></h3>
+        <textarea id="batch-in" rows="6" style="margin-top:12px" placeholder="帮我写个登录页&#10;解释这段代码&#10;把下面文章翻译成英文…"></textarea>
+        <div class="bar">
+          <button class="btn" id="btn-batch"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l9.5-9.5"/><path d="M14.6 3.2l1.3 3.3 3.3 1.3-3.3 1.3-1.3 3.3-1.3-3.3L10 7.8l3.3-1.3z"/></svg>批量增强</button>
+          <button class="btn ghost" id="btn-batch-csv"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11.5"/><path d="M7.5 10.5L12 15l4.5-4.5"/><path d="M4 16.5v2.5a1.5 1.5 0 0 0 1.5 1.5h13a1.5 1.5 0 0 0 1.5-1.5v-2.5"/></svg>导出 CSV</button>
+          <button class="btn ghost" id="btn-clear-batch"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 6.5h17"/><path d="M9 6.5V4h6v2.5"/><path d="M5.5 6.5l1.2 13.2A1.8 1.8 0 0 0 8.5 21h7a1.8 1.8 0 0 0 1.8-1.3L18.5 6.5"/><path d="M10 10v7M14 10v7"/></svg>清空输入</button>
+        </div>
+      </div>
+      <div class="card" style="flex:1;display:flex;flex-direction:column;min-height:200px">
+        <h3>产出清单 <span class="hint">每条：原始 → 增强</span></h3>
+        <textarea id="batch-out" readonly style="flex:1;margin-top:10px;min-height:160px;background:var(--paper)"></textarea>
+      </div>
+    </section>
+
+    <!-- 打磨档案 -->
+    <section class="page" id="page-history">
+      <div class="bar">
+        <button class="btn ghost" id="btn-hist-refresh"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 12a8.5 8.5 0 1 1-2.5-6"/><path d="M20.5 3.5v5h-5"/></svg>刷新</button>
+        <select id="export-format" title="导出格式" style="width:100px"><option value="csv">CSV</option><option value="md">Markdown</option></select>
+        <button class="btn ghost" id="btn-hist-export"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11.5"/><path d="M7.5 10.5L12 15l4.5-4.5"/><path d="M4 16.5v2.5a1.5 1.5 0 0 0 1.5 1.5h13a1.5 1.5 0 0 0 1.5-1.5v-2.5"/></svg>导出全部</button>
+        <button class="btn danger" id="btn-hist-clear"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 6.5h17"/><path d="M9 6.5V4h6v2.5"/><path d="M5.5 6.5l1.2 13.2A1.8 1.8 0 0 0 8.5 21h7a1.8 1.8 0 0 0 1.8-1.3L18.5 6.5"/><path d="M10 10v7M14 10v7"/></svg>清空档案</button>
+        <button class="btn ghost" id="btn-hist-fav" title="只看标星的记录"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.4l2.6 5.4 5.9.7-4.4 4 1.2 5.8-5.3-3-5.3 3 1.2-5.8-4.4-4 5.9-.7z"/></svg>仅看收藏</button>
+        <select id="hist-filter" title="按状态筛选" style="width:112px">
+          <option value="all">全部状态</option>
+          <option value="success">仅成功</option>
+          <option value="failed">仅失败</option>
+          <option value="low">仅低质量</option>
+        </select>
+        <span style="position:relative;margin-left:auto">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" style="position:absolute;left:10px;top:9px;pointer-events:none"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+          <input type="text" id="hist-search" placeholder="检索历史（Ctrl+K）" style="width:250px;padding-left:34px">
+        </span>
+      </div>
+      <div class="stats"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-8"/><path d="M21.5 20H2.5"/></svg><span id="hist-stats">—</span></div>
+      <div class="hist-list" id="hist-list"><div class="empty">加载中…</div></div>
+      <!-- Token 用量卡 -->
+      <div class="card" id="usage-card">
+        <h3>用量账本 <span class="hint">本人 · 按模型 / 按日（近 30 天）· 成本需管理员配置单价后统计</span></h3>
+        <div class="stats" id="usage-summary" style="margin-top:10px">加载中…</div>
+        <div id="usage-tables" style="margin-top:10px"></div>
+      </div>
+    </section>
+
+    <!-- 五槽指令铸造 -->
+    <section class="page" id="page-forge">
+      <div class="card">
+        <h3><span class="step">1</span> 入炉设计文档 <span class="hint">粘贴内容或上传文件（.md / .txt）</span></h3>
+        <div style="display:flex;gap:10px;margin-top:12px;align-items:center;flex-wrap:wrap">
+          <input type="file" id="forge-file" accept=".md,.txt,.markdown" style="max-width:280px">
+          <span class="hint" id="forge-file-note"></span>
+        </div>
+        <textarea id="forge-text" rows="5" style="margin-top:10px" placeholder="或直接粘贴文档内容…"></textarea>
+        <div class="bar"><button class="btn" id="btn-forge-parse"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg>解析并列出目录</button></div>
+        <div class="detect" id="forge-detect"></div>
+      </div>
+      <div class="card" id="forge-outline-card" style="display:none">
+        <h3><span class="step">2</span> 勾选本期切片 <span class="hint">选中父章节时其子节自动纳入，不重复</span></h3>
+        <div class="outline-list" id="forge-outline"></div>
+      </div>
+      <div class="card" id="forge-slots-card" style="display:none">
+        <h3><span class="step">3</span> 补齐五槽并生成</h3>
+        <div class="fields" style="grid-template-columns:repeat(4,1fr);margin-top:10px">
+          <div class="field wide"><label for="forge-task">任务</label><input type="text" id="forge-task" placeholder="动词开头一句话，如：实现用户登录接口"></div>
+          <div class="field"><label for="forge-period">本期</label><input type="text" id="forge-period" placeholder="如：一期 / 二期（可留空）"></div>
+          <div class="field"></div>
+          <div class="field full"><label for="forge-code">代码范围</label><input type="text" id="forge-code" placeholder="精确到文件/函数，逗号分隔，如：src/auth.py, src/db.py"></div>
+          <div class="field full"><label for="forge-decisions">我的决策</label><textarea id="forge-decisions" rows="2" placeholder="对文档待确认项的答复，每行一条"></textarea></div>
+        </div>
+        <div id="forge-vars" style="display:none;margin-top:10px">
+          <div class="hint">检测到模板变量，填写后再次点「生成」即可替换（未填会友好提示，已记忆上次输入）：</div>
+          <div id="forge-vars-grid" style="margin-top:4px"></div>
+        </div>
+        <div class="bar"><button class="btn" id="btn-forge-gen"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4.5v15"/><path d="M4.5 12h15"/><circle cx="12" cy="12" r="9.2"/></svg>生成五槽指令</button></div>
+      </div>
+      <div class="card" id="forge-out-card" style="display:none">
+        <h3>指令产物 <span class="hint">纯本地编译，不消耗 token</span></h3>
+        <div class="warn-box" id="forge-unresolved" style="display:none"></div>
+        <pre class="output" id="forge-out" style="margin-top:10px"></pre>
+        <div class="report" id="forge-report"></div>
+        <div class="bar"><button class="btn ghost" id="btn-forge-copy"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11.5" height="11.5" rx="1.5"/><path d="M5.5 15V5.5A1.5 1.5 0 0 1 7 4h9.5"/></svg>复制指令</button></div>
+      </div>
+    </section>
+
+    <!-- 工坊管理台 -->
+    <section class="page" id="page-admin">
+      <div class="adm-stats" id="adm-stats">
+        <div class="adm-stat"><div class="k"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="8" r="3.6"/><path d="M5 21c1.4-4 4-6 7-6s5.6 2 7 6"/></svg>账号总数</div><div class="v" id="as-users">—</div><div class="s" id="as-users-s"></div></div>
+        <div class="adm-stat"><div class="k"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-8"/><path d="M21.5 20H2.5"/></svg>增强记录</div><div class="v" id="as-records">—</div><div class="s" id="as-records-s"></div></div>
+        <div class="adm-stat"><div class="k"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="16" rx="1.5"/><path d="M3.5 10h17"/><path d="M8 4.5V2.5M16 4.5V2.5"/></svg>今日记录</div><div class="v" id="as-today">—</div><div class="s">跨所有用户</div></div>
+        <div class="adm-stat"><div class="k"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2.5L4 14h6l-1 7.5 9-11.5h-6z"/></svg>累计 Token</div><div class="v" id="as-tokens">—</div><div class="s" id="as-tokens-s"></div></div>
+        <div class="adm-stat"><div class="k"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4.5"/><path d="M12 17.2h.01"/></svg>失败 / 低质量</div><div class="v" id="as-failed">—</div><div class="s" id="as-failed-s"></div></div>
+      </div>
+
+      <div class="card">
+        <h3>新成员默认参数 <span class="hint">建号即预装连接参数，成员开箱即用；全部留空 = 不预设</span></h3>
+        <div class="fields" style="margin-top:10px">
+          <div class="field"><label for="dc-provider">厂商</label><select id="dc-provider"></select></div>
+          <div class="field wide"><label for="dc-key">API Key</label><div style="display:flex;gap:8px"><input type="password" id="dc-key" placeholder="未设置" autocomplete="off"><button class="btn ghost sm" id="dc-toggle-key" type="button">显示</button></div></div>
+          <div class="field"><label for="dc-model">模型</label><input type="text" id="dc-model" placeholder="model name"></div>
+          <div class="field full"><label for="dc-url">Base URL</label><input type="text" id="dc-url" placeholder="https://.../v1"></div>
+          <div class="field"><label for="dc-style">风格</label><select id="dc-style"></select></div>
+          <div class="field"><label for="dc-temp">温度</label><select id="dc-temp"></select></div>
+          <div class="field"><label for="dc-maxtok">最大长度</label><select id="dc-maxtok"></select></div>
+        </div>
+        <div class="bar" style="margin-top:10px">
+          <button class="btn" id="dc-save"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg>保存默认配置</button>
+          <button class="btn ghost" id="dc-clear">清除默认</button>
+          <span class="hint" id="dc-state"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>全员用量账本 <span class="hint">跨所有用户聚合 · 单价单位：元/百万 tokens，配置后新增调用才计成本</span></h3>
+        <div class="stats" id="adm-usage-summary" style="margin-top:10px">加载中…</div>
+        <div id="adm-usage-table" style="margin-top:10px"></div>
+        <div style="display:flex;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap">
+          <input type="text" id="adm-price-json" placeholder='模型单价 JSON，如 {"deepseek-chat":{"prompt":2,"completion":8}}（留空 = 不计成本）' style="flex:1;min-width:260px">
+          <button class="btn sm" id="adm-price-save">保存单价</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>账号管理 <span class="hint">重置密码 / 启停 / 改角色 / 解锁 / 代管数据 / 导出 / 删除</span></h3>
+        <div class="bar">
+          <button class="btn" id="btn-admin-create"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>新建用户</button>
+          <button class="btn ghost" id="btn-admin-refresh"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 12a8.5 8.5 0 1 1-2.5-6"/><path d="M20.5 3.5v5h-5"/></svg>刷新</button>
+          <span style="position:relative">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" style="position:absolute;left:10px;top:9px;pointer-events:none"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+            <input type="text" id="adm-filter" placeholder="过滤：用户名 / 角色 / 状态" style="width:220px;padding-left:32px">
+          </span>
+          <label style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text);cursor:pointer" title="关闭后登录页不再显示注册入口，新用户只能由管理员创建">
+            <input type="checkbox" id="adm-reg-open" style="width:auto;margin:0"> 允许自助注册
+          </label>
+        </div>
+        <div style="overflow-x:auto"><table class="adm-table" id="adm-table">
+          <thead><tr><th>用户</th><th>角色</th><th>状态</th><th>记录</th><th>存储</th><th>最近登录</th><th>创建时间</th><th style="min-width:300px">操作</th></tr></thead>
+          <tbody><tr><td colspan="8" class="hint">加载中…</td></tr></tbody>
+        </table></div>
+      </div>
+
+      <div class="card" id="admin-detail" style="display:none">
+        <h3 id="admin-detail-title">代管面板</h3>
+        <div class="bar" style="margin:8px 0">
+          <button class="adm-seg active" data-seg="cfg">连接配置</button>
+          <button class="adm-seg" data-seg="rec">最近增强记录</button>
+        </div>
+        <div id="admin-detail-body"></div>
+      </div>
+    </section>
+
+    <!-- 状态栏 · 系统日志条 -->
+    <div class="statusbar"><div class="anchor"></div><div class="dot"></div><div class="msg" id="status">就绪 · 选择一个功能开始</div></div>
+  </main>
+</div>
+
+<!-- 强制改密横幅 -->
+<div id="force-pw-banner" style="display:none;position:fixed;inset:0;background:rgba(15,26,46,.55);backdrop-filter:blur(2px);z-index:60;align-items:center;justify-content:center;padding:20px">
+  <div class="modal" style="width:460px">
+    <h3><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--cobalt)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8.5v4.5"/><path d="M12 17h.01"/><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>首次登录必须修改密码</h3>
+    <p>您的账号当前使用的是管理员下发的初始密码，服务端已限制其他功能。请设置新密码后继续使用。</p>
+    <label class="field" style="margin-top:10px"><span class="hint">新密码（至少 8 位，含大小写/数字中 3 类，不同于最近 5 次）</span><input type="password" id="fp-new" autocomplete="new-password"></label>
+    <label class="field" style="margin-top:10px"><span class="hint">确认新密码</span><input type="password" id="fp-new2" autocomplete="new-password"></label>
+    <div class="acts"><button class="btn" id="fp-ok">设置新密码</button></div>
+  </div>
+</div>
+
+<!-- 修改密码模态 -->
+<div class="modal-mask" id="pw-modal">
+  <div class="modal">
+    <h3>修改密码</h3>
+    <label class="field"><span class="hint">旧密码</span><input type="password" id="pw-old" autocomplete="current-password"></label>
+    <label class="field" style="margin-top:10px"><span class="hint">新密码（至少 8 位，含大小写/数字中 3 类）</span><input type="password" id="pw-new" autocomplete="new-password"></label>
+    <label class="field" style="margin-top:10px"><span class="hint">确认新密码</span><input type="password" id="pw-new2" autocomplete="new-password"></label>
+    <div class="acts">
+      <button class="btn ghost" id="pw-cancel">取消</button>
+      <button class="btn" id="pw-ok">确认修改</button>
+    </div>
+  </div>
+</div>
+
+<!-- 新建用户模态 -->
+<div class="modal-mask" id="cu-modal">
+  <div class="modal">
+    <h3>新建用户</h3>
+    <label class="field"><span class="hint">用户名（2-32 位中文/字母/数字/下划线）</span><input type="text" id="cu-name" autocomplete="off"></label>
+    <label class="field" style="margin-top:10px"><span class="hint">初始密码（留空=系统生成一次性临时密码）</span><input type="password" id="cu-pass" autocomplete="new-password"></label>
+    <label class="field" style="margin-top:10px"><span class="hint">角色</span><select id="cu-role"><option value="user">普通用户</option><option value="admin">管理员</option></select></label>
+    <p class="hint" style="margin-top:10px">留空密码将生成一次性临时密码（仅显示一次），该用户首次登录会被强制改密。管理员登录需额外平台口令。</p>
+    <div class="acts">
+      <button class="btn ghost" id="cu-cancel">取消</button>
+      <button class="btn" id="cu-ok">创建</button>
+    </div>
+  </div>
+</div>
+
+<!-- 双版对比模态 -->
+<div class="modal-mask" id="ab-modal">
+  <div class="modal" style="width:960px;max-height:92vh;overflow-y:auto">
+    <h3><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--cobalt)" stroke-width="1.7" stroke-linecap="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1"/><rect x="13.5" y="3.5" width="7" height="7" rx="1"/><rect x="3.5" y="13.5" width="7" height="7" rx="1"/><rect x="13.5" y="13.5" width="7" height="7" rx="1"/></svg>双版对比 · 同一句话，两种淬法</h3>
+    <p class="hint">用两种增强风格各生成一版，逐字对比后由你点选采纳；两次调用都会照常记入打磨档案。</p>
+    <div style="display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap">
+      <label class="hint">A 版风格<select id="ab-style-a" style="width:140px;margin-left:6px"></select></label>
+      <label class="hint">B 版风格<select id="ab-style-b" style="width:140px;margin-left:6px"></select></label>
+      <button class="btn" id="ab-run" style="margin-left:auto">生成两版</button>
+    </div>
+    <div id="ab-verdict" style="margin-top:12px"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
+      <div class="pane" style="min-height:220px"><h4><b>A</b> 候选一<span class="count" id="ab-a-meta"></span></h4><textarea id="ab-a-out" readonly placeholder="A 版结果…"></textarea><button class="btn ghost sm" id="ab-a-adopt" style="margin-top:8px;align-self:flex-end">采用 A 版</button></div>
+      <div class="pane" style="min-height:220px"><h4><b>B</b> 候选二<span class="count" id="ab-b-meta"></span></h4><textarea id="ab-b-out" readonly placeholder="B 版结果…"></textarea><button class="btn ghost sm" id="ab-b-adopt" style="margin-top:8px;align-self:flex-end">采用 B 版</button></div>
+    </div>
+    <div class="acts"><button class="btn ghost" id="ab-close">关闭</button></div>
+  </div>
+</div>
+
+<!-- 版本链模态 -->
+<div class="modal-mask" id="ver-modal">
+  <div class="modal" style="width:920px;max-height:92vh;overflow-y:auto">
+    <h3 id="ver-title"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--cobalt)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.3"/><circle cx="6" cy="18" r="2.3"/><circle cx="18" cy="12" r="2.3"/><path d="M8.3 6h6.4a3 3 0 0 1 3 3"/><path d="M8.3 18h6.4a3 3 0 0 0 3-3"/></svg>版本链</h3>
+    <div style="border:1px solid var(--line);border-radius:3px;padding:12px;background:var(--paper)">
+      <div style="font-size:13px;font-weight:700;color:var(--title)">固化为新版本</div>
+      <textarea id="ver-content" rows="5" style="margin-top:8px;background:#fff" placeholder="版本内容（默认预填当前结果，可手动编辑）"></textarea>
+      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+        <input type="text" id="ver-msg" placeholder="版本说明（必填，≤80 字，如：补充异常分支描述）" style="flex:2;min-width:200px">
+        <select id="ver-source" style="width:130px"><option value="manual">手动编辑</option><option value="enhance">AI 增强</option></select>
+        <input type="text" id="ver-model" placeholder="模型名（选填，AI 增强来源时填写）" style="flex:1;min-width:140px">
+        <button class="btn sm" id="ver-save">保存版本</button>
+      </div>
+    </div>
+    <div id="ver-score-chart" style="margin-top:12px"></div>
+    <div id="ver-list" style="margin-top:12px"></div>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:14px;flex-wrap:wrap">
+      <span class="hint">版本对比：</span>
+      <select id="ver-left" style="width:180px"></select>
+      <span class="hint">→</span>
+      <select id="ver-right" style="width:180px"></select>
+      <button class="btn ghost sm" id="ver-cmp">对比</button>
+      <button class="btn ghost sm" id="ver-copy-md" title="把对比结果复制为 Markdown 代码块">复制 Markdown</button>
+      <span class="hint" id="ver-cmp-note"></span>
+    </div>
+    <div id="ver-diff"></div>
+    <div class="acts"><button class="btn ghost" id="ver-close">关闭</button></div>
+  </div>
+</div>
+
+<!-- 确认模态 -->
+<div class="modal-mask" id="modal">
+  <div class="modal">
+    <h3 id="modal-title"></h3>
+    <p id="modal-body"></p>
+    <div class="acts">
+      <button class="btn ghost" id="modal-cancel">取消</button>
+      <button class="btn" id="modal-ok">确定</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-wrap" aria-live="polite"></div>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const PAGE_META = {
+  single:["单条提示增强","一句话入炉，熔去冗余，淬出可直接执行的提示词","01"],
+  batch:["批量提示增强","一次淬炼一批提示，CSV 归档、导出不落地","02"],
+  history:["打磨档案","每一次增强都自动留档，可检索、收藏、回滚与复用","03"],
+  forge:["五槽指令铸造","设计文档入炉，编译为「定位+切片+边界+验收+停工」五槽指令","04"],
+  admin:["工坊管理台","账号、默认铸炉、全员用量与代管数据的统一管理","05"],
+};
+let lastOriginal = "";
+let forgeOutline = [];
+let authEnabled = false;
+let ME = {username:"", role:"user", must_change:false};
+
+function setStatus(msg){ $("status").textContent = msg; }
+function toast(msg, kind){
+  const el = document.createElement("div");
+  el.className = "toast" + (kind ? " " + kind : "");
+  el.textContent = msg;
+  $("toast-wrap").appendChild(el);
+  setTimeout(()=>{ el.remove(); }, 3600);
+}
+
+async function api(path, opts={}){
+  const res = await fetch(path, Object.assign({headers:{"Content-Type":"application/json"}}, opts));
+  if(res.status === 401){ location.href = "/login?expired=1"; throw new Error("未登录"); }
+  let data = {};
+  try{ data = await res.json(); }catch(e){}
+  if(res.status === 403 && data.code === "MUST_CHANGE"){ showForcePw(); throw new Error(data.error || "请先修改密码"); }
+  if(!res.ok) throw new Error(data.error || ("请求失败（HTTP " + res.status + "）"));
+  return data;
+}
+
+/* ---------------- 导航 ---------------- */
+document.querySelectorAll(".nav-btn[data-page]").forEach(b=>{
+  b.addEventListener("click", ()=>activatePage(b.dataset.page, b));
+});
+function activatePage(key, btn){
+  document.querySelectorAll(".nav-btn").forEach(x=>x.classList.remove("active"));
+  (btn || document.querySelector('.nav-btn[data-page="'+key+'"]')).classList.add("active");
+  document.querySelectorAll(".page").forEach(x=>x.classList.remove("active"));
+  $("page-"+key).classList.add("active");
+  const meta = PAGE_META[key] || ["","","·"];
+  $("page-title").textContent = meta[0];
+  $("page-desc").textContent = meta[1];
+  $("page-no").textContent = meta[2];
+  $("page-crumb").textContent = meta[0];
+  if(key==="history"){ refreshHistory(); loadUsage(); }
+  if(key==="admin") loadAdminAll();
+}
+$("nav-export").addEventListener("click", ()=>{ location.href = "/api/export"; });
+
+/* ---------------- 配置 ---------------- */
+async function loadIdentity(){
+  const me = await api("/api/me");
+  ME = me;
+  $("foot-user").textContent = me.username;
+  $("foot-avatar").textContent = (me.username || "·").trim().slice(0,1).toUpperCase();
+  $("foot-role").textContent = me.role === "admin" ? "工坊管理员" : "工坊成员";
+  if(me.role === "admin"){ $("nav-admin").style.display = ""; }
+  $("nav-export").style.display = "";
+  if(me.must_change){ showForcePw(); return; }
+}
+function showForcePw(){ $("force-pw-banner").style.display = "flex"; }
+async function loadConfig(){
+  const d = await api("/api/config");
+  authEnabled = d.auth_enabled;
+  $("foot-ver").textContent = "v" + d.version + " · Web 版 · 独立工作区";
+  const provSel = $("cfg-provider");
+  provSel.innerHTML = "";
+  Object.keys(d.providers).forEach(p=>{
+    const o = document.createElement("option"); o.value = p; o.textContent = p; provSel.appendChild(o);
+  });
+  const styleSel = $("cfg-style");
+  styleSel.innerHTML = "";
+  Object.entries(d.styles).forEach(([label,key])=>{
+    const o = document.createElement("option"); o.value = key; o.textContent = label; styleSel.appendChild(o);
+  });
+  const fill = (sel, arr) => { sel.innerHTML = ""; arr.forEach(v=>{ const o=document.createElement("option"); o.value=v; o.textContent=v; sel.appendChild(o); }); };
+  fill($("cfg-temp"), d.temp_options);
+  fill($("cfg-maxtok"), d.maxtoken_options);
+  const c = d.config;
+  provSel.value = c.provider || "DeepSeek";
+  $("cfg-key").value = c.api_key || "";
+  $("cfg-url").value = c.base_url || "";
+  $("cfg-model").value = c.model || "";
+  styleSel.value = c.style || "balanced";
+  if(d.temp_options.includes(c.temperature)) $("cfg-temp").value = c.temperature;
+  if(d.maxtoken_options.includes(c.max_tokens)) $("cfg-maxtok").value = c.max_tokens;
+  window._providers = d.providers;
+  window._styles = d.styles;
+  window._styleKeys = Object.values(d.styles);
+  window._temps = d.temp_options;
+  window._maxtoks = d.maxtoken_options;
+  // 双版对比风格下拉：与主配置同源
+  ["ab-style-a","ab-style-b"].forEach(id=>{
+    const sel = $(id); if(!sel) return;
+    sel.innerHTML = "";
+    Object.entries(d.styles).forEach(([label,key])=>{ const o=document.createElement("option"); o.value=key; o.textContent=label; sel.appendChild(o); });
+  });
+  if($("ab-style-a")) $("ab-style-a").value = "balanced";
+  if($("ab-style-b")) $("ab-style-b").value = "technical";
+  if(d.env_key_injected){
+    $("cfg-env-note").style.display = "inline";
+    $("cfg-key").disabled = true; $("cfg-key").placeholder = "（环境变量已注入）";
+  }
+}
+$("cfg-provider").addEventListener("change", ()=>{
+  const p = window._providers[$("cfg-provider").value];
+  if(p){
+    if(p.base_url) $("cfg-url").value = p.base_url;
+    if(p.model) $("cfg-model").value = p.model;
+  }
+  setStatus("已切换厂商预设: " + $("cfg-provider").value);
+});
+$("cfg-toggle-key").addEventListener("click", ()=>{
+  const el = $("cfg-key");
+  el.type = el.type === "password" ? "text" : "password";
+  $("cfg-toggle-key").textContent = el.type === "password" ? "显示" : "隐藏";
+});
+$("cfg-save").addEventListener("click", async ()=>{
+  try{
+    await api("/api/config", {method:"POST", body: JSON.stringify({
+      provider: $("cfg-provider").value, api_key: $("cfg-key").value.trim(),
+      base_url: $("cfg-url").value.trim(), model: $("cfg-model").value.trim(),
+      temperature: $("cfg-temp").value, max_tokens: $("cfg-maxtok").value,
+      style: $("cfg-style").value,
+    })});
+    setStatus("配置已保存到本地数据库（promptforge.db）");
+    toast("配置已保存", "ok");
+  }catch(e){ setStatus("保存失败: " + e.message); toast("保存失败：" + e.message, "err"); }
+});
+
+/* ---------------- 单条增强 ---------------- */
+let _lastEnhRecordId = null;
+
+/* 提示词体检（P0-1 / B-01~B-03：结构槽位 + 安全规则 + 维度分组）*/
+const LINT_DIMS = {
+  security:["安全风险","X"], role:["角色","R"], format:["输出格式","F"],
+  constraint:["约束","K"], context:["上下文","C"], clarity:["清晰度","L"],
+  specificity:["具体性","S"], example:["示例","E"], length:["长度","N"],
+};
+const LINT_EMPTY_HINT = "输入提示词后自动体检：结构槽位 / 模糊措辞 / 安全风险 / 长度异常 / 未填变量";
+function renderLint(l){
+  $("lint-score").textContent = l.score;
+  $("lint-score").style.color = l.score >= 80 ? "var(--ok)" : (l.score >= 50 ? "var(--warn)" : "var(--err)");
+  const box = $("lint-issues");
+  const issues = (l.issues || []).filter(i=>i && ["error","warn","info"].includes(i.level));
+  if(!issues.length){
+    box.innerHTML = '<span class="lint-ok"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5L20 6"/></svg>结构清晰：角色、约束、格式齐备，可以直接入炉</span>';
+    return;
+  }
+  // 按维度分组渲染：安全风险优先，其余按固定语义顺序，缺 dimension 时归入清晰度
+  const order = ["security","role","format","constraint","context","clarity","specificity","example","length"];
+  const groups = {};
+  issues.forEach(i=>{
+    const k = (i.dimension && LINT_DIMS[i.dimension]) ? i.dimension : "clarity";
+    (groups[k] = groups[k] || []).push(i);
+  });
+  box.innerHTML = order.filter(k=>groups[k]).map(k=>{
+    const label = LINT_DIMS[k][0];
+    const chips = groups[k].map(i=>'<span class="lint-chip ' + i.level + '">' + esc(i.message) + "</span>").join("");
+    return '<span class="lint-dim"><b>' + esc(label) + '</b>' + chips + '</span>';
+  }).join("");
+}
+let _lintTimer = null;
+function scheduleLint(){
+  clearTimeout(_lintTimer);
+  _lintTimer = setTimeout(async ()=>{
+    const text = $("single-in").value;
+    if(!text.trim()){ $("lint-score").textContent = "—"; $("lint-score").style.color="var(--cobalt)"; $("lint-issues").innerHTML = '<span class="hint" style="font-size:12px;color:var(--muted)">' + esc(LINT_EMPTY_HINT) + '</span>'; return; }
+    try{
+      const d = await api("/api/lint", {method:"POST", body: JSON.stringify({text})});
+      renderLint(d.lint);
+    }catch(e){ /* 体检失败不打断输入 */ }
+  }, 400);
+}
+function updateCounters(){
+  $("single-in-count").textContent = ($("single-in").value.length) + " 字";
+  $("single-out-count").textContent = ($("single-out").value.length) + " 字";
+}
+$("single-in").addEventListener("input", ()=>{ updateCounters(); scheduleLint(); });
+$("single-out").addEventListener("input", updateCounters);
+
+/* 场景预设（P0-6）*/
+const PRESETS = {
+  code: "你是一名资深全栈工程师。请针对下面的需求编写实现：说明思路与关键代码、列出边界条件与异常处理，并指出可能的性能陷阱。\n\n需求：\n（在这里写下需求）",
+  write: "请润色下面这段文字：保留原意与语气，改正逻辑漏洞与拗口表达，删除冗余，使其更清晰有力。输出润色后的全文，不要附加解释。\n\n原文：\n（在这里粘贴原文）",
+  translate: "你是一名专业译者，精通中英互译。请翻译下面的内容：术语准确、语气与原文一致、长句合理拆分。只输出译文。\n\n待译文本：\n（在这里粘贴原文）",
+  sql: "你是一名数据库工程师。在写 SQL 之前，先让我确认：表结构、字段含义、索引与数据量。我提供后，请给出：可执行的 SQL、执行计划提示、以及需要注意的兼容性问题。\n\n任务：\n（描述查询或变更）",
+  review: "你是一名严格的代码评审官。请审查下面的代码：按严重程度分级（阻断/严重/一般/建议）列出问题，每条注明位置与根因，并给出最小修复方案。\n\n代码：\n（在这里粘贴代码）",
+};
+$("preset-select").addEventListener("change", ()=>{
+  const v = $("preset-select").value;
+  if(!v) return;
+  $("single-in").value = PRESETS[v] || "";
+  $("preset-select").value = "";
+  updateCounters(); scheduleLint();
+  setStatus("已载入场景预设，请补全括号中的内容后再增强");
+});
+
+/* 最近复用 chips（P0-5）*/
+async function loadRecentChips(){
+  try{
+    const d = await api("/api/history?limit=5");
+    const box = $("recent-chips");
+    const items = (d.records || []).filter(r=>(r.input||"").trim()).slice(0,5);
+    box.innerHTML = '<span class="cap" style="font-size:11px;letter-spacing:1px;color:var(--muted);font-weight:700">最近复用</span>';
+    if(!items.length){ box.insertAdjacentHTML("beforeend", '<span class="hint" style="font-size:11px">暂无记录，增强一次后这里会出现快捷入口</span>'); return; }
+    items.forEach(r=>{
+      const b = document.createElement("button");
+      b.className = "chip";
+      b.textContent = (r.input||"").replace(/\s+/g," ").slice(0,26);
+      b.title = r.input;
+      b.addEventListener("click", ()=>{
+        $("single-in").value = r.input || "";
+        updateCounters(); scheduleLint();
+        setStatus("已载入最近一次输入");
+      });
+      box.appendChild(b);
+    });
+  }catch(e){ /* 快捷入口失败不影响主流程 */ }
+}
+
+$("btn-enhance").addEventListener("click", async ()=>{
+  const text = $("single-in").value.trim();
+  if(!text){ setStatus("请输入要增强的提示词"); return; }
+  lastOriginal = text;
+  const btn = $("btn-enhance");
+  btn.disabled = true; btn.textContent = "增强中…";
+  setStatus("正在调用模型增强…");
+  try{
+    const d = await api("/api/enhance", {method:"POST", body: JSON.stringify({text})});
+    $("single-out").value = d.output;
+    updateCounters();
+    _lastEnhRecordId = d.record_id || null;
+    $("btn-save-version").style.display = _lastEnhRecordId ? "" : "none";
+    let note = "增强完成 · 已记入打磨档案（" + d.duration_ms + "ms）";
+    if(d.quality === "low_quality") note += "（质量偏低：疑似复述原文）";
+    if(d.length_note) note += "（" + d.length_note + "）";
+    setStatus(note);
+    toast("增强完成", "ok");
+    loadRecentChips();
+  }catch(e){ setStatus("增强失败: " + e.message); $("btn-save-version").style.display = "none"; toast("增强失败：" + e.message, "err"); }
+  finally{ btn.disabled = false; btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4"/><path d="M8.5 5.5l1.2 2.4"/><path d="M15.5 5.5l-1.2 2.4"/><path d="M4 13a8 4.5 0 0 0 16 0"/></svg>增强提示词<kbd style="opacity:.75;font-size:10px;border:1px solid rgba(255,255,255,.4);border-radius:4px;padding:0 4px">Ctrl+↵</kbd>'; }
+});
+$("btn-save-version").addEventListener("click", ()=>{
+  if(!_lastEnhRecordId){ setStatus("没有可固化的增强记录"); return; }
+  openVersions({id: _lastEnhRecordId, output: $("single-out").value});
+});
+$("btn-copy-result").addEventListener("click", ()=>{
+  const t = $("single-out").value.trim();
+  if(!t){ setStatus("结果为空，无可复制内容"); return; }
+  navigator.clipboard.writeText(t).then(()=>{ setStatus("已复制增强结果到剪贴板"); toast("已复制", "ok"); })
+    .catch(()=>{ $("single-out").select(); document.execCommand("copy"); setStatus("已复制增强结果"); });
+});
+$("btn-restore").addEventListener("click", ()=>{
+  if(lastOriginal){ $("single-in").value = lastOriginal; updateCounters(); scheduleLint(); setStatus("已还原为最近一次增强的原始提示词"); }
+  else setStatus("没有可还原的原始内容");
+});
+$("btn-clear-single").addEventListener("click", ()=>{
+  $("single-in").value = ""; $("single-out").value = ""; lastOriginal = "";
+  updateCounters(); scheduleLint();
+  setStatus("已清空输入框（不影响打磨档案）");
+});
+
+/* 双版对比（P0-2）：两种风格并行增强，人工采纳 */
+const abState = {a:null, b:null};
+$("btn-ab").addEventListener("click", ()=>{
+  const text = $("single-in").value.trim();
+  if(!text){ setStatus("请先输入要增强的提示词"); return; }
+  $("ab-modal").classList.add("show");
+});
+$("ab-close").addEventListener("click", ()=> $("ab-modal").classList.remove("show"));
+/* 双版配对判定（B-06，借鉴 yotambraun/flowprompt 的配对设计与"证据不足"一等公民输出）。
+   同一输入 × 两种风格 = 天然配对设计；此处仅用可观测的静态结构指标做对比，
+   明确标注为「指标参考」而非统计显著性检验——完整的 McNemar/置换检验需要用户
+   标注期望输出，单人单机成本过高，已列入 docs 后续项，不做虚假结论。 */
+function abMetrics(t){
+  const s = String(t || "");
+  const slots = ["角色","你是","作为","扮演","role","you are","目标","验收","goal",
+                 "规则","约束","禁止","不得","rules","步骤","流程","workflow","step",
+                 "格式","输出","字数","结构","json","markdown","format","清单","示例"];
+  let hit = 0;
+  slots.forEach(k=>{ if(s.toLowerCase().indexOf(k.toLowerCase()) >= 0) hit++; });
+  const nums = (s.match(/\d/g) || []).length;
+  const total = Math.min(100, hit * 9 + Math.min(18, Math.round(nums / 3)) + Math.min(16, Math.round(s.length / 90)));
+  return {slots: hit, nums: nums, len: s.length, total: total};
+}
+function abVerdict(ra, rb){
+  if(!ra || !rb || ra.error || rb.error) return null;
+  const a = ra.output || "", b = rb.output || "";
+  if(!a || !b) return null;
+  const ma = abMetrics(a), mb = abMetrics(b);
+  const diff = Math.abs(ma.total - mb.total);
+  const THRESH = 6;                      // 差值小于该阈值视为"接近"，拒绝给赢家
+  let verdict, text;
+  if(diff < THRESH){
+    verdict = "insufficient";
+    text = "两版结构指标接近（相差 " + diff + " 分），<b>证据不足，无法自动判定</b>。请直接阅读两侧结果后点选采纳。";
+  }else{
+    const aWins = ma.total > mb.total;
+    verdict = aWins ? "a_wins" : "b_wins";
+    text = "按静态结构指标，<b>" + (aWins ? "A 版" : "B 版") + "</b> 更完整（" +
+           (aWins ? ma.total : mb.total) + " : " + (aWins ? mb.total : ma.total) +
+           " 分）。指标仅作参考，最终请以你的实际阅读为准。";
+  }
+  return {verdict: verdict, text: text, a: ma, b: mb};
+}
+function renderAbVerdict(v){
+  const box = $("ab-verdict");
+  if(!box) return;
+  if(!v){ box.innerHTML = ""; return; }
+  const tagText = {a_wins:"A 版占优", b_wins:"B 版占优", tie:"两版持平", insufficient:"证据不足"}[v.verdict] || "—";
+  box.innerHTML =
+    '<div class="ab-verdict"><span class="vtag ' + v.verdict + '">' + tagText + '</span>' +
+    '<div class="vtext">' + v.text +
+    '<div class="vmetrics">' +
+    '<span>结构槽位 <b>' + v.a.slots + ' : ' + v.b.slots + '</b></span>' +
+    '<span>量化信息 <b>' + v.a.nums + ' : ' + v.b.nums + '</b></span>' +
+    '<span>篇幅 <b>' + v.a.len + ' : ' + v.b.len + '</b></span>' +
+    '<span>指标分 <b>' + v.a.total + ' : ' + v.b.total + '</b></span>' +
+    '</div></div></div>';
+}
+$("ab-run").addEventListener("click", async ()=>{
+  const text = $("single-in").value.trim();
+  if(!text){ setStatus("输入框为空"); return; }
+  const btn = $("ab-run");
+  btn.disabled = true; btn.textContent = "生成中…";
+  $("ab-a-out").value = ""; $("ab-b-out").value = "";
+  $("ab-a-meta").textContent = ""; $("ab-b-meta").textContent = "";
+  renderAbVerdict(null);
+  const styleA = $("ab-style-a").value, styleB = $("ab-style-b").value;
+  const call = style => api("/api/enhance", {method:"POST", body: JSON.stringify({text, style})}).catch(e=>({error:e.message}));
+  try{
+    const [ra, rb] = await Promise.all([call(styleA), call(styleB)]);
+    abState.a = ra; abState.b = rb;
+    const fmtMeta = r => r.error ? "失败：" + r.error : (" · " + (r.output||"").length + " 字 · " + (r.prompt_tokens||0) + "+" + (r.completion_tokens||0) + " tk · " + (r.duration_ms||0) + "ms" + (r.cached ? " · 缓存命中" : ""));
+    if(ra.error){ $("ab-a-out").value = "（" + ra.error + "）"; } else { $("ab-a-out").value = ra.output || ""; }
+    if(rb.error){ $("ab-b-out").value = "（" + rb.error + "）"; } else { $("ab-b-out").value = rb.output || ""; }
+    $("ab-a-meta").textContent = fmtMeta(ra);
+    $("ab-b-meta").textContent = fmtMeta(rb);
+    renderAbVerdict(abVerdict(ra, rb));
+    setStatus(ra.error || rb.error ? "有一版生成失败，可重试或更换风格" : "两版已生成，请选择采纳");
+  } finally { btn.disabled = false; btn.textContent = "生成两版"; }
+});
+function adoptAb(which){
+  const r = abState[which];
+  if(!r || r.error || !r.output){ toast("该版本不可用", "err"); return; }
+  $("single-out").value = r.output;
+  updateCounters();
+  _lastEnhRecordId = r.record_id || null;
+  $("btn-save-version").style.display = _lastEnhRecordId ? "" : "none";
+  $("ab-modal").classList.remove("show");
+  setStatus("已采用「" + (which === "a" ? $("ab-style-a") : $("ab-style-b")).selectedOptions[0].textContent + "」风格版本");
+  toast("已采用该版本", "ok");
+  loadRecentChips();
+}
+$("ab-a-adopt").addEventListener("click", ()=>adoptAb("a"));
+$("ab-b-adopt").addEventListener("click", ()=>adoptAb("b"));
+
+/* ---------------- 批量增强 ---------------- */
+$("btn-batch").addEventListener("click", async ()=>{
+  const lines = $("batch-in").value.split("\n").map(s=>s.trim()).filter(Boolean);
+  if(!lines.length){ setStatus("批量框为空，请每行输入一条提示词"); return; }
+  if(lines.length > 20 && !confirm("本次将批量增强 " + lines.length + " 条提示词。\n每条独立调用模型，" +
+      "耗时随条数增长（每条最长约 90 秒），期间请保持页面打开。\n\n确定继续？")) return;
+  const btn = $("btn-batch");
+  btn.disabled = true; btn.textContent = "批量增强中…";
+  setStatus("批量增强中… 共 " + lines.length + " 条（逐条调用模型，请耐心等待）");
+  try{
+    const d = await api("/api/batch", {method:"POST", body: JSON.stringify({lines})});
+    const parts = d.results.map(r =>
+      r.ok ? "【" + r.index + "】原始：" + r.input + "\n增强：" + r.output + "\n"
+           : "【" + r.index + "】原始：" + r.input + "\n失败：" + r.error + "\n");
+    $("batch-out").value = parts.join("\n");
+    setStatus("批量完成 · 成功 " + d.ok + " 失败 " + d.fail);
+    toast("批量完成：成功 " + d.ok + " 失败 " + d.fail, d.fail ? "" : "ok");
+  }catch(e){ setStatus("批量失败: " + e.message); }
+  finally{ btn.disabled = false; btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4"/><path d="M8.5 5.5l1.2 2.4"/><path d="M15.5 5.5l-1.2 2.4"/><path d="M4 13a8 4.5 0 0 0 16 0"/></svg>批量增强'; }
+});
+$("btn-batch-csv").addEventListener("click", ()=>{
+  const text = $("batch-out").value.trim();
+  if(!text){ setStatus("没有可导出的批量结果"); return; }
+  const rows = [["原始提示词","增强提示词"]];
+  text.split("【").forEach(b=>{
+    b = b.trim(); if(!b) return;
+    let orig = "", enh = "";
+    b.split("\n").forEach(ln=>{
+      if(ln.startsWith("原始：")) orig = ln.slice(3);
+      else if(ln.startsWith("增强：")) enh = ln.slice(3);
+      else if(ln.startsWith("失败：")) enh = "失败：" + ln.slice(3);
+    });
+    rows.push([orig, enh]);
+  });
+  const csv = "\ufeff" + rows.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(",")).join("\r\n");
+  downloadBlob(new Blob([csv], {type:"text/csv;charset=utf-8"}), "batch-enhance.csv");
+  setStatus("已导出 CSV（" + (rows.length-1) + " 条）");
+});
+$("btn-clear-batch").addEventListener("click", ()=>{
+  $("batch-in").value = ""; $("batch-out").value = "";
+  setStatus("已清空批量输入框（不影响打磨档案）");
+});
+function downloadBlob(blob, name){
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 5000);
+}
+
+/* ---------------- 打磨档案 ---------------- */
+let histFavOnly = false;   // P1-1：仅看收藏
+function applyHistFilter(recs){
+  const flt = $("hist-filter").value;
+  if(flt === "success") return recs.filter(r=>(r.status||"success")==="success");
+  if(flt === "failed")  return recs.filter(r=>(r.status||"success")!=="success");
+  if(flt === "low")     return recs.filter(r=>r.quality==="low_quality");
+  return recs;
+}
+async function refreshHistory(){
+  try{
+    const q = $("hist-search").value.trim();
+    const favParam = histFavOnly ? "&favorites=1" : "";
+    const d = await api("/api/history" + ((q || favParam) ? ("?" + (q ? "q=" + encodeURIComponent(q) : "") + (q && favParam ? "&" : "") + (favParam ? "favorites=1" : "")) : ""));
+    const s = d.stats;
+    const recs = applyHistFilter(d.records);
+    const rate = s.total ? (s.success / s.total * 100).toFixed(1) : "0.0";
+    let statsText = "总计 " + s.total + " 条 · 今日 " + s.today +
+      " 条 · 成功率 " + rate + "% · 平均耗时 " + s.avg_duration_ms + "ms · 累计 token " +
+      (s.total_prompt_tokens + s.total_completion_tokens) + "（输入 " + s.total_prompt_tokens +
+      " / 输出 " + s.total_completion_tokens + "）· 低质量 " + s.low_quality + " 条";
+    if(q || $("hist-filter").value !== "all" || histFavOnly) statsText += " · 当前显示 " + recs.length + " 条";
+    $("hist-stats").textContent = statsText;
+    const list = $("hist-list");
+    list.innerHTML = "";
+    if(!recs.length){
+      list.innerHTML = '<div class="empty">' + (histFavOnly
+        ? "（还没有收藏的记录，点右侧星标即可加入收藏）"
+        : q ? "（没有匹配「" + esc(q) + "」的历史记录）"
+        : $("hist-filter").value !== "all" ? "（当前筛选条件下没有历史记录）" : "（暂无历史记录，去单条或批量页试一次吧）") + "</div>";
+      return;
+    }
+    recs.forEach(it=>{
+      const ok = (it.status || "success") === "success";
+      const row = document.createElement("div"); row.className = "rec";
+      const preview = ((it.input || "").slice(0,64)).replace(/\n/g," ");
+      const lowQ = it.quality === "low_quality" ? ' <span class="tag tag-warn">低质量</span>' : "";
+      const ver = it.current_version_id ? ' <span class="tag-src enhance">版本链</span>' : "";
+      row.innerHTML =
+        '<button class="fav' + (it.favorite ? " on" : "") + '" title="' + (it.favorite ? "取消收藏" : "收藏这条") + '">' +
+          '<svg width="17" height="17" viewBox="0 0 24 24" fill="' + (it.favorite ? "currentColor" : "none") + '" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l2.7 5.6 6.1.7-4.6 4.1 1.3 6-5.5-3.1L6.6 19.4l1.3-6-4.6-4.1 6.1-.7z"/></svg>' +
+        '</button>' +
+        '<div class="info"><div class="meta"><span class="obs ' + (ok?"ok":"err") + '"></span>' +
+        esc(it.time||"") + " · " + esc(it.provider||"") + " · " + esc(it.style||"—") + lowQ + ver +
+        '</div><div class="preview">' + esc(preview) + "</div></div>";
+      const favBtn = row.querySelector(".fav");
+      favBtn.addEventListener("click", async ()=>{
+        try{
+          const d = await api("/api/history/" + it.id + "/favorite", {method:"POST"});
+          it.favorite = d.favorite;
+          favBtn.classList.toggle("on", d.favorite);
+          favBtn.innerHTML = '<svg width="17" height="17" viewBox="0 0 24 24" fill="' + (d.favorite ? "currentColor" : "none") + '" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l2.7 5.6 6.1.7-4.6 4.1 1.3 6-5.5-3.1L6.6 19.4l1.3-6-4.6-4.1 6.1-.7z"/></svg>';
+          if(histFavOnly && !d.favorite) refreshHistory();
+          toast(d.favorite ? "已加入收藏" : "已取消收藏", "ok");
+        }catch(e){ toast("收藏失败：" + e.message, "err"); }
+      });
+      const acts = document.createElement("div"); acts.className = "acts";
+      const outText = it.output || (ok ? "" : "（该条增强失败，无结果）");
+      acts.appendChild(mkBtn("复制", ()=>{
+        navigator.clipboard.writeText(outText).then(()=>{ setStatus("已复制历史结果"); toast("已复制", "ok"); })
+          .catch(()=>setStatus("复制失败"));
+      }, "ghost"));
+      acts.appendChild(mkBtn("载入", ()=>{
+        activatePage("single");
+        $("single-out").value = outText; updateCounters();
+        setStatus("已载入历史结果到「单条增强」结果框");
+      }));
+      acts.appendChild(mkBtn("版本链", ()=>{
+        openVersions({id: it.id, output: outText});
+      }, "ghost"));
+      acts.appendChild(mkBtn("评估", ()=>{
+        evaluateRecord(it.id);
+      }, "ghost"));
+      row.appendChild(acts);
+      list.appendChild(row);
+    });
+  }catch(e){ setStatus("加载历史失败: " + e.message); }
+}
+function mkBtn(text, fn, cls){
+  const b = document.createElement("button");
+  b.className = "btn sm" + (cls ? " " + cls : "");
+  b.textContent = text; b.addEventListener("click", fn);
+  return b;
+}
+function esc(s){ return String(s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+$("btn-hist-refresh").addEventListener("click", refreshHistory);
+$("btn-hist-export").addEventListener("click", ()=>{
+  const fmt = $("export-format").value || "csv";
+  location.href = "/api/history/export?format=" + encodeURIComponent(fmt);
+});
+$("btn-hist-fav").addEventListener("click", ()=>{
+  histFavOnly = !histFavOnly;
+  $("btn-hist-fav").classList.toggle("active", histFavOnly);
+  $("btn-hist-fav").style.borderColor = histFavOnly ? "var(--cobalt)" : "";
+  $("btn-hist-fav").style.color = histFavOnly ? "var(--cobalt-dark)" : "";
+  refreshHistory();
+});
+$("btn-hist-clear").addEventListener("click", ()=>{
+  confirmModal("确认清空打磨档案",
+    "将执行以下操作：\n1. 先按今日日期原子备份整个数据库（含配置与全部历史）；\n2. 再仅清空增强历史，连接配置不会被删除；\n3. 记录本次清空到审计日志。\n\n确定继续？",
+    async ()=>{
+      try{
+        const d = await api("/api/history/clear", {method:"POST"});
+        setStatus("已备份至 " + d.backup + " 并清空 " + d.removed + " 条历史（配置保留）");
+        toast("档案已清空（备份已保留）", "ok");
+        refreshHistory();
+      }catch(e){ setStatus("清空失败: " + e.message); }
+    });
+});
+let _histSearchTimer = null;
+$("hist-search").addEventListener("input", ()=>{
+  clearTimeout(_histSearchTimer);
+  _histSearchTimer = setTimeout(refreshHistory, 300);
+});
+$("hist-filter").addEventListener("change", refreshHistory);
+
+/* ---------------- 版本链（F2）---------------- */
+let _verRecord = null;
+let _verCache = [];
+let _lastDiffUnified = "";   // 最近一次 diff 的统一文本（供复制为 Markdown）
+
+function srcLabel(s){
+  if(s === "init") return "初始固化";
+  if(s === "enhance") return "AI 增强";
+  return "手动编辑";
+}
+function openVersions(rec){
+  _verRecord = rec;
+  $("ver-content").value = rec.output || "";
+  $("ver-msg").value = ""; $("ver-model").value = ""; $("ver-source").value = "manual";
+  $("ver-diff").innerHTML = ""; $("ver-cmp-note").textContent = ""; _lastDiffUnified = "";
+  $("ver-title").innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--cobalt)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.3"/><circle cx="6" cy="18" r="2.3"/><circle cx="18" cy="12" r="2.3"/><path d="M8.3 6h6.4a3 3 0 0 1 3 3v0"/><path d="M8.3 18h6.4a3 3 0 0 0 3-3v-0.4"/></svg>版本链 · 记录 #' + rec.id;
+  $("ver-modal").classList.add("show");
+  loadVersions();
+}
+$("ver-close").addEventListener("click", ()=>{ $("ver-modal").classList.remove("show"); });
+
+/* 评估分数趋势（P1-2，纯 SVG 折线，零依赖）*/
+function renderScoreChart(versions){
+  const box = $("ver-score-chart");
+  box.innerHTML = "";
+  const scored = versions.filter(v=>v.score).slice().sort((a,b)=>a.version_no-b.version_no);
+  if(scored.length < 2){ box.innerHTML = '<div class="hint" style="margin-top:6px">评估分数趋势：对同一记录累计 ≥2 次带评分的版本后，这里会画出准确性 / 完整性 / 清晰度 三线趋势。</div>'; return; }
+  const W = Math.min(840, box.clientWidth || 840), H = 150, PL = 34, PR = 12, PT = 26, PB = 24;
+  const maxX = scored.length - 1, yMax = 10;
+  const xs = i => PL + (W-PL-PR) * (i/maxX);
+  const ys = v => PT + (H-PT-PB) * (1 - (Number(v)||0)/yMax);
+  const mk = (key, color) => {
+    const pts = scored.map((v,i)=> xs(i).toFixed(1) + "," + ys(Number(v.score[key])||0).toFixed(1)).join(" ");
+    return '<polyline points="' + pts + '" fill="none" stroke="' + color + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
+      scored.map((v,i)=>'<circle cx="'+xs(i).toFixed(1)+'" cy="'+ys(Number(v.score[key])||0).toFixed(1)+'" r="2.6" fill="'+color+'"/>').join("");
+  };
+  box.innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">' +
+      '<span class="hint" style="font-weight:700">评估分数趋势（最近 ' + scored.length + ' 个带评分版本）</span>' +
+      '<span style="font-size:11px;color:var(--muted)"><span style="color:#1B4FD8">■ 准确性</span>&nbsp; <span style="color:#0E8FA8">■ 完整性</span>&nbsp; <span style="color:#0F7A43">■ 清晰度</span></span>' +
+    '</div>' +
+    '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" height="' + H + '" role="img" aria-label="评估分数趋势">' +
+      '<line x1="'+PL+'" y1="'+ys(0)+'" x2="'+(W-PR)+'" y2="'+ys(0)+'" stroke="var(--line-strong)" stroke-width="1"/>' +
+      '<line x1="'+PL+'" y1="'+ys(5)+'" x2="'+(W-PR)+'" y2="'+ys(5)+'" stroke="var(--line)" stroke-dasharray="3,3"/>' +
+      '<text x="'+(PL-6)+'" y="'+(ys(5)+4)+'" font-size="10" fill="var(--muted)" text-anchor="end">5</text>' +
+      '<text x="'+(PL-6)+'" y="'+(ys(10)+4)+'" font-size="10" fill="var(--muted)" text-anchor="end">10</text>' +
+      mk("accuracy","#1B4FD8") + mk("completeness","#0E8FA8") + mk("clarity","#0F7A43") +
+      scored.map((v,i)=>'<text x="'+xs(i)+'" y="'+(H-8)+'" font-size="10" fill="var(--muted)" text-anchor="middle">v'+v.version_no+'</text>').join("") +
+    '</svg>';
+}
+
+async function loadVersions(){
+  try{
+    const d = await api("/api/history/" + _verRecord.id + "/versions");
+    _verCache = d.versions || [];
+    renderScoreChart(_verCache);
+    renderVerList();
+    renderVerSelectors();
+  }catch(e){ setStatus("版本链加载失败: " + e.message); }
+}
+function renderVerList(){
+  const box = $("ver-list");
+  if(!_verCache.length){
+    box.innerHTML = '<div class="hint">该记录还没有版本，先在上方「固化为新版本」创建 v1。</div>';
+    return;
+  }
+  box.innerHTML = _verCache.map(v=>{
+    const score = v.score ? '<span class="score-tag">评估 ' + v.score.accuracy + "/" +
+      v.score.completeness + "/" + v.score.clarity + "</span>" : "";
+    return '<div class="ver-item' + (v.is_current ? " cur" : "") + '">' +
+      '<span class="vno">v' + v.version_no + "</span>" +
+      '<span class="tag-src' + (v.source==="enhance" ? " enhance" : "") + '">' + srcLabel(v.source) + "</span>" +
+      (v.is_current ? '<span class="tag-cur">当前</span>' : "") +
+      '<span class="vmsg" title="' + esc(v.commit_message) + '">' + esc(v.commit_message) + "</span>" +
+      (v.model ? '<span class="vmeta">· ' + esc(v.model) + "</span>" : "") +
+      '<span class="vmeta">· ' + esc(v.created_by||"—") + " · " + esc(v.created_at||"") + "</span>" +
+      score +
+      '<span style="display:flex;gap:6px;margin-left:auto">' +
+      (v.is_current ? "" : '<button class="btn sm ghost" data-rollback="' + v.id + '">回滚到此版</button>') +
+      "</span></div>";
+  }).join("");
+  box.querySelectorAll("[data-rollback]").forEach(b=>{
+    b.addEventListener("click", ()=>{
+      const vid = parseInt(b.dataset.rollback);
+      const v = _verCache.find(x=>x.id === vid);
+      confirmModal("回滚版本",
+        "把当前版本指针切回 v" + (v ? v.version_no : vid) + "？\n回滚不会删除任何版本，链保持完整；可随时再切回。",
+        async ()=>{
+          try{
+            await api("/api/history/" + _verRecord.id + "/versions/" + vid + "/activate", {method:"POST"});
+            setStatus("已回滚到 v" + (v ? v.version_no : vid) + "（审计已记录）");
+            toast("已回滚", "ok");
+            loadVersions(); refreshHistory();
+          }catch(e){ setStatus("回滚失败: " + e.message); }
+        });
+    });
+  });
+}
+function renderVerSelectors(){
+  const opts = _verCache.map(v=>'<option value="' + v.id + '">v' + v.version_no + " · " +
+    esc((v.commit_message||"").slice(0,14)) + "</option>").join("");
+  $("ver-left").innerHTML = opts; $("ver-right").innerHTML = opts;
+  if(_verCache.length >= 1){
+    const cur = _verCache.find(v=>v.is_current) || _verCache[0];
+    $("ver-left").value = cur.id;
+    const other = _verCache.find(v=>v.id !== cur.id);
+    $("ver-right").value = other ? other.id : cur.id;
+  }
+}
+$("ver-cmp").addEventListener("click", async ()=>{
+  if(!_verCache.length){ setStatus("没有可对比的版本"); return; }
+  const l = parseInt($("ver-left").value), r = parseInt($("ver-right").value);
+  try{
+    const d = await api("/api/history/" + _verRecord.id + "/diff?left=" + l + "&right=" + r);
+    renderDiff(d);
+  }catch(e){ setStatus("对比失败: " + e.message); }
+});
+/* diff 复制为 Markdown（P1-3）*/
+$("ver-copy-md").addEventListener("click", ()=>{
+  if(!_lastDiffUnified){ setStatus("先点「对比」生成 diff，再复制"); return; }
+  const md = "```diff\n" + _lastDiffUnified + "\n```\n";
+  navigator.clipboard.writeText(md).then(()=>{ setStatus("已复制 unified diff（Markdown 围栏）"); toast("已复制 Markdown", "ok"); })
+    .catch(()=>setStatus("复制失败"));
+});
+function hlSide(text, ops, side){
+  if(!ops || !ops.length) return esc(text);
+  let out = "";
+  ops.forEach(o=>{
+    const seg = side === "left" ? o.left : o.right;
+    if(o.tag === "equal") out += esc(seg);
+    else if(o.tag === "delete") out += side === "left" ? "<del>" + esc(seg) + "</del>" : "";
+    else if(o.tag === "insert") out += side === "right" ? "<ins>" + esc(seg) + "</ins>" : "";
+    else out += (side === "left" ? "<del>" + esc(seg) + "</del>" : "<ins>" + esc(seg) + "</ins>");
+  });
+  return out;
+}
+function diffCell(cell, side){
+  if(!cell) return '<td class="unchanged">&nbsp;</td>';
+  let inner = hlSide(cell.text, cell.opcodes, side);
+  if(inner === "") inner = "&nbsp;";
+  return '<td class="' + cell.type + '">' + inner + "</td>";
+}
+function renderDiff(d){
+  const box = $("ver-diff");
+  if(d.identical){
+    $("ver-cmp-note").textContent = "";
+    _lastDiffUnified = "";
+    box.innerHTML = '<div class="hint" style="margin-top:12px">两版本内容完全一致 ✓</div>';
+    return;
+  }
+  _lastDiffUnified = d.unified || "";
+  const per = d.slots && d.slots.per_slot ? Object.entries(d.slots.per_slot) : [];
+  const slotHtml = per.length ? '<div class="slot-stats">槽值差异：' + per.map(([k,v]) =>
+    '<b>' + esc(k) + '</b> +' + v.added + " / -" + v.removed).join(" · ") + "</div>" : "";
+  const rowsHtml = d.rows.map(r=>"<tr>" + diffCell(r.left, "left") + diffCell(r.right, "right") + "</tr>").join("");
+  box.innerHTML =
+    '<div class="diff-box"><table class="diff-table"><tbody>' + rowsHtml + "</tbody></table></div>" +
+    slotHtml +
+    '<details style="margin-top:8px"><summary class="hint">统一格式 diff（复制/导出用）</summary>' +
+    '<pre class="output" style="max-height:220px">' + esc(d.unified || "") + "</pre></details>";
+  $("ver-cmp-note").textContent = "v" + d.left.version_no + " → v" + d.right.version_no;
+}
+$("ver-save").addEventListener("click", async ()=>{
+  if(!_verRecord) return;
+  const content = $("ver-content").value;
+  const msg = $("ver-msg").value.trim();
+  if(!content.trim()){ setStatus("版本内容不能为空"); return; }
+  if(!msg){ setStatus("请填写版本说明"); return; }
+  if(msg.length > 80){ setStatus("版本说明不超过 80 字"); return; }
+  try{
+    await api("/api/history/" + _verRecord.id + "/versions", {method:"POST", body: JSON.stringify({
+      content: content, commit_message: msg,
+      source: $("ver-source").value, model: $("ver-model").value.trim()})});
+    setStatus("已固化为新版本 ✓");
+    toast("版本已固化", "ok");
+    loadVersions(); refreshHistory();
+  }catch(e){ setStatus("保存版本失败: " + e.message); }
+});
+async function evaluateRecord(rid){
+  setStatus("评估中…（调用模型打分，最长约 90 秒）");
+  try{
+    const d = await api("/api/history/" + rid + "/evaluate", {method:"POST"});
+    const s = d.score;
+    setStatus("评估完成 · 准确性 " + s.accuracy + " · 完整性 " + s.completeness +
+      " · 清晰度 " + s.clarity + (d.persisted ? "（已入版本链）" : "（该记录暂无版本，评分未入链）") +
+      " · 建议：" + s.suggestion);
+    toast("评估完成", "ok");
+    refreshHistory();
+    if(_verRecord && _verRecord.id === rid) loadVersions();
+  }catch(e){ setStatus("评估失败: " + e.message); toast("评估失败：" + e.message, "err"); }
+}
+
+/* ---------------- Token 用量卡 ---------------- */
+function fmtCost(c){ return c == null ? "—" : "¥" + Number(c).toFixed(4); }
+function usageTableHtml(rows, keyName){
+  if(!rows || !rows.length) return "";
+  return '<div style="overflow-x:auto"><table class="adm-table" style="min-width:560px">' +
+    "<thead><tr><th>" + keyName + "</th><th>调用</th><th>输入 tokens</th><th>输出 tokens</th><th>合计 tokens</th><th>成本</th></tr></thead><tbody>" +
+    rows.map(r=>"<tr><td><b>" + esc(r[keyName] || "—") + "</b></td><td>" + fmtNum(r.calls) +
+      "</td><td>" + fmtNum(r.prompt_tokens) + "</td><td>" + fmtNum(r.completion_tokens) +
+      "</td><td>" + fmtNum(r.total_tokens) + "</td><td>" + fmtCost(r.cost) + "</td></tr>").join("") +
+    "</tbody></table></div>";
+}
+async function loadUsage(){
+  try{
+    const d = await api("/api/usage");
+    const u = d.usage || {};
+    const s = u.summary || {};
+    $("usage-summary").textContent = "累计调用 " + fmtNum(s.calls) + " 次 · 输入 " +
+      fmtNum(s.prompt_tokens) + " · 输出 " + fmtNum(s.completion_tokens) +
+      " · 合计 " + fmtNum(s.total_tokens) + " tokens · 成本 " + fmtCost(s.cost);
+    $("usage-tables").innerHTML =
+      '<div class="hint" style="margin-bottom:4px">按模型</div>' +
+      (usageTableHtml(u.by_model, "model") || '<div class="hint">暂无数据（增强成功一次后这里会出现统计）</div>') +
+      '<div class="hint" style="margin:10px 0 4px">按日（近 30 天）</div>' +
+      (usageTableHtml(u.by_day, "date") || '<div class="hint">暂无数据</div>');
+  }catch(e){ $("usage-summary").textContent = "用量统计加载失败: " + e.message; }
+}
+
+/* ---------------- 五槽指令铸造 ---------------- */
+$("forge-file").addEventListener("change", ()=>{
+  const f = $("forge-file").files[0];
+  if(!f) return;
+  if(f.size > 2*1024*1024){ setStatus("文件过大（上限 2MB），请精简后重试"); return; }
+  const r = new FileReader();
+  r.onload = ()=>{ $("forge-text").value = r.result; $("forge-file-note").textContent = "已读入：" + f.name; };
+  r.readAsText(f, "utf-8");
+});
+$("btn-forge-parse").addEventListener("click", async ()=>{
+  const text = $("forge-text").value;
+  if(!text.trim()){ setStatus("请粘贴或上传设计文档内容"); return; }
+  try{
+    const d = await api("/api/forge/parse", {method:"POST", body: JSON.stringify({text})});
+    forgeOutline = d.outline;
+    renderOutline();
+    const det = d.detected;
+    $("forge-detect").innerHTML =
+      "<span>标题 <b>" + d.outline.length + "</b> 个</span>" +
+      "<span>命令 <b>" + det.commands.length + "</b> 处</span>" +
+      "<span>待确认 <b>" + det.ambiguities.length + "</b> 处</span>" +
+      "<span>分期 <b>" + det.phases.length + "</b> 处</span>" +
+      "<span>依赖 <b>" + det.deps.length + "</b> 处</span>";
+    $("forge-outline-card").style.display = "";
+    $("forge-slots-card").style.display = "";
+    $("forge-out-card").style.display = "none";
+    $("forge-vars").style.display = "none";
+    $("forge-vars-grid").innerHTML = "";
+    setStatus("解析完成：共 " + d.outline.length + " 个标题，请勾选本期切片");
+  }catch(e){ setStatus("解析失败: " + e.message); }
+});
+function renderOutline(){
+  const box = $("forge-outline"); box.innerHTML = "";
+  forgeOutline.forEach(h=>{
+    const div = document.createElement("div");
+    div.className = "outline-item l" + Math.min(h.level,3) + (h.pickable ? "" : " unpick");
+    const cb = document.createElement("input");
+    cb.type = "checkbox"; cb.disabled = !h.pickable; cb.dataset.line = h.line;
+    const num = document.createElement("span"); num.className = "num"; num.textContent = h.num || "·";
+    const title = document.createElement("span"); title.textContent = h.title;
+    div.appendChild(cb); div.appendChild(num); div.appendChild(title);
+    box.appendChild(div);
+  });
+}
+/* 模板变量记忆（P0-7）：上次填写值自动回填 */
+function saveForgeVars(vars){
+  try{ localStorage.setItem("pf_forge_vars", JSON.stringify(vars || {})); }catch(e){}
+}
+function loadForgeVars(){
+  try{ return JSON.parse(localStorage.getItem("pf_forge_vars") || "{}"); }catch(e){ return {}; }
+}
+function renderForgeVars(names){
+  const box = $("forge-vars");
+  const grid = $("forge-vars-grid");
+  const old = loadForgeVars();
+  grid.querySelectorAll("input").forEach(i=>{ old[i.dataset.v] = i.value; });
+  grid.innerHTML = "";
+  names.forEach(n=>{
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;gap:8px;align-items:center;margin-top:6px";
+    const lab = document.createElement("span");
+    lab.className = "hint";
+    lab.style.cssText = "min-width:110px;text-align:right;flex-shrink:0";
+    lab.textContent = "{{" + n + "}}";
+    const inp = document.createElement("input");
+    inp.type = "text"; inp.dataset.v = n;
+    inp.value = old[n] || "";
+    inp.placeholder = "变量 " + n + " 的值";
+    inp.addEventListener("input", ()=>{
+      const cur = {};
+      grid.querySelectorAll("input").forEach(x=>{ if(x.value !== "") cur[x.dataset.v] = x.value; });
+      saveForgeVars(cur);
+    });
+    row.appendChild(lab); row.appendChild(inp);
+    grid.appendChild(row);
+  });
+  box.style.display = "";
+}
+$("btn-forge-gen").addEventListener("click", async ()=>{
+  const selected = [...document.querySelectorAll("#forge-outline input:checked")].map(c=>parseInt(c.dataset.line));
+  const body = {
+    selected, task: $("forge-task").value, period: $("forge-period").value,
+    code: $("forge-code").value, decisions: $("forge-decisions").value,
+  };
+  const vars = {};
+  document.querySelectorAll("#forge-vars-grid input").forEach(i=>{ if(i.value !== "") vars[i.dataset.v] = i.value; });
+  if(Object.keys(vars).length){ body.variables = vars; saveForgeVars(vars); }
+  try{
+    const d = await api("/api/forge/generate", {method:"POST", body: JSON.stringify(body)});
+    if(d.needs_variables && d.variables && d.variables.length){
+      renderForgeVars(d.variables);
+      $("forge-out").textContent = d.prompt;
+      $("forge-unresolved").style.display = "none";
+      $("forge-report").textContent = "";
+      $("forge-out-card").style.display = "";
+      setStatus("检测到 " + d.variables.length + " 个模板变量，请填写后再次生成");
+      return;
+    }
+    $("forge-out").textContent = d.prompt;
+    const un = $("forge-unresolved");
+    if(d.unresolved && d.unresolved.length){
+      un.style.display = "";
+      un.textContent = "歧义停工 — 以下槽位未确认，先答复再执行：\n" + d.unresolved.map((u,i)=>(i+1)+". "+u).join("\n");
+    } else un.style.display = "none";
+    const r = d.report || {};
+    $("forge-report").textContent = "文档 " + (r.doc_lines||0) + " 行 · 全文约 " + (r.full_tokens||0) +
+      " token → 指令约 " + (r.prompt_tokens||0) + " token" +
+      (r.saved_pct != null ? "（节省 " + r.saved_pct + "%）" : "");
+    $("forge-out-card").style.display = "";
+    toast("五槽指令已生成", "ok");
+    setStatus("五槽指令已生成" + (d.unresolved.length ? "（含 " + d.unresolved.length + " 项歧义停工）" : ""));
+  }catch(e){ setStatus("生成失败: " + e.message); }
+});
+$("btn-forge-copy").addEventListener("click", ()=>{
+  const t = $("forge-out").textContent;
+  if(!t){ setStatus("没有可复制的指令"); return; }
+  navigator.clipboard.writeText(t).then(()=>{ setStatus("已复制五槽指令"); toast("已复制指令", "ok"); })
+    .catch(()=>setStatus("复制失败"));
+});
+
+/* ---------------- 模态 ---------------- */
+let modalCb = null;
+function confirmModal(title, body, cb){
+  $("modal-title").textContent = title;
+  $("modal-body").textContent = body;
+  modalCb = cb;
+  $("modal").classList.add("show");
+}
+$("modal-cancel").addEventListener("click", ()=>{ $("modal").classList.remove("show"); modalCb = null; });
+$("modal-ok").addEventListener("click", ()=>{
+  $("modal").classList.remove("show");
+  const cb = modalCb; modalCb = null;
+  if(cb) cb();
+});
+$("logout-link").addEventListener("click", async e=>{
+  e.preventDefault();
+  await api("/api/logout", {method:"POST"});
+  location.href = "/login";
+});
+
+/* ---------------- 修改密码 ---------------- */
+function pwStrengthOk(p){
+  if(p.length < 8) return "密码至少 8 位";
+  const c = [/[a-z]/.test(p), /[A-Z]/.test(p), /\d/.test(p), /[^A-Za-z0-9]/.test(p)].filter(Boolean).length;
+  if(c < 3) return "密码需含大写、小写、数字中的至少 3 类";
+  return "";
+}
+$("chpwd-link").addEventListener("click", e=>{
+  e.preventDefault();
+  $("pw-old").value=""; $("pw-new").value=""; $("pw-new2").value="";
+  $("pw-modal").classList.add("show");
+});
+$("pw-cancel").addEventListener("click", ()=> $("pw-modal").classList.remove("show"));
+async function submitPw(oldPw, newPw, newPw2){
+  const err = pwStrengthOk(newPw);
+  if(err){ setStatus(err); return false; }
+  if(newPw !== newPw2){ setStatus("两次输入的新密码不一致"); return false; }
+  try{
+    await api("/api/change-password", {method:"POST", body: JSON.stringify({old_password: oldPw, new_password: newPw})});
+    return true;
+  }catch(e){ setStatus("修改失败: " + e.message); return false; }
+}
+$("pw-ok").addEventListener("click", async ()=>{
+  if(await submitPw($("pw-old").value, $("pw-new").value, $("pw-new2").value)){
+    $("pw-modal").classList.remove("show");
+    setStatus("密码已修改 ✓");
+    toast("密码已修改", "ok");
+  }
+});
+$("fp-ok").addEventListener("click", async ()=>{
+  if(await submitPw("", $("fp-new").value, $("fp-new2").value)){
+    ME.must_change = false;
+    $("force-pw-banner").style.display = "none";
+    setStatus("密码已设置 ✓ 现在可以正常使用");
+    loadConfig().catch(e=>setStatus("初始化失败: " + e.message));
+  }
+});
+
+/* ---------------- 工坊管理台 ---------------- */
+let _admSeg = "cfg";
+let _admUser = "";
+function jsq(s){ return String(s).replace(/\\/g,"\\\\").replace(/'/g,"\\'"); }
+function fmtNum(n){ if(n==null) return "—"; n=Number(n)||0; if(n>=1e8) return (n/1e8).toFixed(2)+" 亿"; if(n>=1e4) return (n/1e4).toFixed(1)+" 万"; return String(n); }
+function fmtSize(n){ if(!n) return "0 B"; if(n<1024) return n+" B"; if(n<1048576) return (n/1024).toFixed(1)+" KB"; if(n<1073741824) return (n/1048576).toFixed(1)+" MB"; return (n/1073741824).toFixed(2)+" GB"; }
+function fillSel(sel, vals, cur){ sel.innerHTML=""; vals.forEach(v=>{const o=document.createElement("option");o.value=v;o.textContent=v;sel.appendChild(o);}); if(vals.includes(cur)) sel.value=cur; }
+
+async function loadAdminAll(){
+  loadAdmStats();
+  loadAdminUsers();
+  loadDefaultCfg();
+  loadRegToggle();
+  loadAdminUsage();
+}
+async function loadAdminUsage(){
+  try{
+    const d = await api("/api/admin/usage");
+    const u = d.usage || {};
+    const s = u.summary || {};
+    $("adm-usage-summary").textContent = "全站调用 " + fmtNum(s.calls) + " 次 · 输入 " +
+      fmtNum(s.prompt_tokens) + " · 输出 " + fmtNum(s.completion_tokens) +
+      " · 合计 " + fmtNum(s.total_tokens) + " tokens · 成本 " + fmtCost(s.cost);
+    $("adm-usage-table").innerHTML =
+      '<div class="hint" style="margin-bottom:4px">按用户</div>' +
+      (usageTableHtml(d.by_user, "user_id") || '<div class="hint">暂无数据</div>') +
+      '<div class="hint" style="margin:10px 0 4px">按模型</div>' +
+      (usageTableHtml(u.by_model, "model") || '<div class="hint">暂无数据</div>');
+  }catch(e){ $("adm-usage-summary").textContent = "全员用量加载失败: " + e.message; }
+  try{
+    const p = await api("/api/admin/usage-prices");
+    const el = $("adm-price-json");
+    const keys = Object.keys(p.prices || {});
+    if(el && !el.value && keys.length) el.value = JSON.stringify(p.prices);
+  }catch(e){ }
+}
+$("adm-price-save").addEventListener("click", async ()=>{
+  const raw = $("adm-price-json").value.trim();
+  let prices = {};
+  if(raw){
+    try{ prices = JSON.parse(raw); }
+    catch(e){ setStatus("单价配置不是合法 JSON"); return; }
+  }
+  try{
+    await api("/api/admin/usage-prices", {method:"POST", body: JSON.stringify({prices})});
+    setStatus("模型单价已保存 ✓ 配置之后新增的调用才计成本");
+    toast("单价已保存", "ok");
+    loadAdminUsage();
+  }catch(e){ setStatus("保存失败: " + e.message); }
+});
+async function loadRegToggle(){
+  const el = $("adm-reg-open");
+  if(!el) return;
+  try{
+    const d = await api("/api/admin/register-toggle");
+    el.checked = !!d.open;
+  }catch(e){ }
+}
+(function bindRegToggle(){
+  const el = $("adm-reg-open");
+  if(!el) return;
+  el.addEventListener("change", async ()=>{
+    try{
+      await api("/api/admin/register-toggle", {method:"POST", body: JSON.stringify({open: el.checked})});
+      setStatus(el.checked ? "已开启自助注册 ✓" : "已关闭自助注册 ✓");
+    }catch(e){ el.checked = !el.checked; setStatus("切换失败: " + e.message); }
+  });
+})();
+async function loadAdmStats(){
+  try{
+    const d = await api("/api/admin/stats");
+    const s = d.stats || {};
+    $("as-users").textContent = s.users_total ?? "—";
+    $("as-users-s").textContent = "活跃 " + (s.users_active||0) + " · 管理员 " + (s.admins||0);
+    $("as-records").textContent = fmtNum(s.records_total);
+    $("as-records-s").textContent = "成功 " + fmtNum(s.success) + " · 失败 " + fmtNum(s.failed);
+    $("as-today").textContent = fmtNum(s.records_today);
+    $("as-tokens").textContent = fmtNum(s.tokens_total);
+    $("as-tokens-s").textContent = "入 " + fmtNum(s.tokens_in) + " / 出 " + fmtNum(s.tokens_out);
+    $("as-failed").textContent = fmtNum(s.failed);
+    $("as-failed-s").textContent = s.broken_workspaces ? ("⚠ " + s.broken_workspaces + " 个工作区库异常") : "跨所有用户聚合";
+  }catch(e){ }
+}
+let _admUsersCache = [];
+let _admFilterTimer = null;
+function admUserMatch(u, kw){
+  if(!kw) return true;
+  kw = kw.toLowerCase();
+  const state = !u.is_active ? "停用" : u.is_locked ? "锁定" : u.must_change ? "待改密" : "正常";
+  return (u.username||"").toLowerCase().includes(kw) ||
+         (u.role==="admin"?"管理员":"用户").includes(kw) || state.includes(kw);
+}
+function renderAdminRows(){
+  const tb = document.querySelector("#adm-table tbody");
+  const kw = $("adm-filter").value.trim();
+  const list = _admUsersCache.filter(u=>admUserMatch(u, kw));
+  if(!_admUsersCache.length){ tb.innerHTML = '<tr><td colspan="8" class="hint">暂无账号</td></tr>'; return; }
+  if(!list.length){ tb.innerHTML = '<tr><td colspan="8" class="hint">没有匹配「' + esc(kw) + '」的账号</td></tr>'; return; }
+  tb.innerHTML = list.map(u=>{
+      const st = [];
+      if(!u.is_active) st.push('<span class="tag tag-err">停用</span>');
+      else if(u.is_locked) st.push('<span class="tag tag-warn">锁定</span>');
+      else if(u.must_change) st.push('<span class="tag tag-warn">待改密</span>');
+      else st.push('<span class="tag tag-ok">正常</span>');
+      const self = u.username === ME.username;
+      const isBuiltin = u.username === "admin";
+      const acts = [
+        `<button class="btn sm ghost" onclick="adminDetail('${jsq(u.username)}')">代管</button>`,
+        `<button class="btn sm ghost" onclick="adminReset('${jsq(u.username)}')">重置密码</button>`,
+        (self||isBuiltin) ? "" :
+          `<button class="btn sm ghost" onclick="adminToggle('${jsq(u.username)}',${u.is_active?0:1})">${u.is_active?"停用":"启用"}</button>`,
+        u.is_locked ? `<button class="btn sm ghost" onclick="adminUnlock('${jsq(u.username)}')">解锁</button>` : "",
+        (self||isBuiltin) ? "" :
+          `<button class="btn sm ghost" onclick="adminRole('${jsq(u.username)}','${u.role==="admin"?"user":"admin"}')">${u.role==="admin"?"降为用户":"升为管理员"}</button>`,
+        `<button class="btn sm ghost" onclick="location.href='/api/admin/users/${encodeURIComponent(u.username)}/export'">导出</button>`,
+        (self||isBuiltin) ? "" :
+          `<button class="btn sm danger" onclick="adminDelete('${jsq(u.username)}')">删除</button>`,
+      ].join(" ");
+      return `<tr class="${u.is_active?"":"off"}">
+        <td><b>${esc(u.username)}</b>${self?' <span class="hint">(我)</span>':""}</td>
+        <td>${u.role==="admin"?'<span class="tag tag-warn">管理员</span>':"用户"}</td>
+        <td>${st.join(" ")}</td>
+        <td>${u.stats ? fmtNum(u.stats.records) : "—"} 条</td>
+        <td>${u.stats ? fmtSize(u.stats.size_bytes) : "—"}</td>
+        <td>${esc(u.last_login_at || "—")}</td>
+        <td>${esc((u.created_at||"").slice(0,10))}</td>
+        <td style="white-space:nowrap">${acts}</td></tr>`;
+    }).join("");
+}
+async function loadAdminUsers(){
+  try{
+    const d = await api("/api/admin/users");
+    _admUsersCache = d.users || [];
+    renderAdminRows();
+  }catch(e){
+    document.querySelector("#adm-table tbody").innerHTML =
+      '<tr><td colspan="8" class="hint">加载失败: ' + esc(e.message) + "</td></tr>";
+  }
+}
+$("adm-filter").addEventListener("input", ()=>{
+  clearTimeout(_admFilterTimer);
+  _admFilterTimer = setTimeout(renderAdminRows, 200);
+});
+async function adminReset(username){
+  const p = prompt("为 " + username + " 设置新密码（留空=系统生成一次性临时密码，该用户首登强制改密）", "");
+  if(p === null) return;
+  try{
+    const d = await api("/api/admin/users/" + encodeURIComponent(username) + "/reset-password",
+      {method:"POST", body: JSON.stringify({password: p.trim()})});
+    if(d.temp_password) alert("临时密码（仅显示一次，请安全转交）：\n\n" + d.temp_password);
+    else alert("已重置为指定密码");
+    loadAdminUsers();
+  }catch(e){ setStatus("重置失败: " + e.message); }
+}
+async function adminToggle(username, active){
+  if(!active && !confirm("停用 " + username + " 后其登录会话立即失效，确定？")) return;
+  try{
+    await api("/api/admin/users/" + encodeURIComponent(username) + "/active",
+      {method:"POST", body: JSON.stringify({active})});
+    loadAdminUsers();
+  }catch(e){ setStatus("操作失败: " + e.message); }
+}
+async function adminUnlock(username){
+  try{ await api("/api/admin/users/" + encodeURIComponent(username) + "/unlock", {method:"POST"}); loadAdminUsers(); }
+  catch(e){ setStatus("解锁失败: " + e.message); }
+}
+async function adminRole(username, role){
+  try{
+    await api("/api/admin/users/" + encodeURIComponent(username) + "/role",
+      {method:"POST", body: JSON.stringify({role})});
+    loadAdminUsers();
+  }catch(e){ setStatus("改角色失败: " + e.message); }
+}
+async function adminDelete(username){
+  if(!confirm("确定软删除账号 " + username + " ？\n（停用并释放用户名，工作区数据保留在服务器磁盘）")) return;
+  try{
+    await api("/api/admin/users/" + encodeURIComponent(username), {method:"DELETE"});
+    loadAdminUsers(); loadAdmStats();
+  }catch(e){ setStatus("删除失败: " + e.message); }
+}
+async function adminDetail(username){
+  _admUser = username; _admSeg = "cfg";
+  const card = $("admin-detail");
+  $("admin-detail-title").textContent = "代管用户 — " + username;
+  card.style.display = "";
+  document.querySelectorAll(".adm-seg").forEach(b=>b.classList.toggle("active", b.dataset.seg==="cfg"));
+  renderAdmSeg();
+  card.scrollIntoView({behavior:"smooth", block:"nearest"});
+}
+document.querySelectorAll(".adm-seg").forEach(b=>{
+  b.addEventListener("click", ()=>{
+    _admSeg = b.dataset.seg;
+    document.querySelectorAll(".adm-seg").forEach(x=>x.classList.toggle("active", x===b));
+    renderAdmSeg();
+  });
+});
+async function renderAdmSeg(){
+  const body = $("admin-detail-body");
+  body.innerHTML = '<div class="hint">加载中…</div>';
+  if(_admSeg === "cfg") return renderAdmCfg(body, _admUser);
+  return renderAdmRecords(body, _admUser);
+}
+async function renderAdmCfg(body, username){
+  try{
+    const {config: c} = await api("/api/admin/users/" + encodeURIComponent(username) + "/config");
+    body.innerHTML =
+      '<div class="fields">' +
+      '<div class="field"><label>厂商</label><select id="ad-provider"></select></div>' +
+      '<div class="field wide"><label>API Key</label><div style="display:flex;gap:8px"><input type="password" id="ad-key" placeholder="' + (c.api_key_set ? "已设置，留空=不修改" : "未设置") + '"><button class="btn ghost sm" id="ad-toggle-key" type="button">显示</button></div></div>' +
+      '<div class="field"><label>模型</label><input type="text" id="ad-model" value="' + esc(c.model||"") + '"></div>' +
+      '<div class="field full"><label>Base URL</label><input type="text" id="ad-url" class="full" value="' + esc(c.base_url||"") + '"></div>' +
+      '<div class="field"><label>风格</label><select id="ad-style"></select></div>' +
+      '<div class="field"><label>温度</label><select id="ad-temp"></select></div>' +
+      '<div class="field"><label>最大长度</label><select id="ad-maxtok"></select></div>' +
+      '</div>' +
+      '<div class="bar" style="margin-top:12px"><button class="btn" id="ad-save">保存该用户配置</button>' +
+      '<button class="btn danger" id="ad-clear">清空其历史（自动备份）</button>' +
+      '<button class="btn ghost" id="ad-close">收起</button></div>';
+    fillSel($("ad-provider"), Object.keys(window._providers || {}), c.provider);
+    $("ad-style").innerHTML = "";
+    Object.entries(window._styles || {}).forEach(([label,key])=>{ const o=document.createElement("option"); o.value=key; o.textContent=label; $("ad-style").appendChild(o); });
+    if(c.style) $("ad-style").value = c.style;
+    fillSel($("ad-temp"), window._temps || [], c.temperature);
+    fillSel($("ad-maxtok"), window._maxtoks || [], c.max_tokens);
+    $("ad-toggle-key").onclick = ()=>{ const el=$("ad-key"); el.type = el.type==="password"?"text":"password"; };
+    $("ad-save").onclick = async ()=>{
+      try{
+        await api("/api/admin/users/" + encodeURIComponent(username) + "/config", {method:"POST", body: JSON.stringify({
+          provider: $("ad-provider").value, api_key: $("ad-key").value.trim(),
+          base_url: $("ad-url").value.trim(), model: $("ad-model").value.trim(),
+          temperature: $("ad-temp").value, max_tokens: $("ad-maxtok").value, style: $("ad-style").value,
+        })});
+        setStatus("已保存 " + username + " 的连接配置");
+        toast("已保存", "ok");
+      }catch(e){ setStatus("保存失败: " + e.message); }
+    };
+    $("ad-clear").onclick = async ()=>{
+      if(!confirm("清空 " + username + " 的全部历史档案？（先自动备份数据库）")) return;
+      try{
+        const d = await api("/api/admin/users/" + encodeURIComponent(username) + "/clear-history", {method:"POST"});
+        setStatus("已备份 " + d.backup + " 并清空 " + d.removed + " 条");
+        renderAdmSeg(); loadAdmStats();
+      }catch(e){ setStatus("清空失败: " + e.message); }
+    };
+    $("ad-close").onclick = ()=>{ $("admin-detail").style.display="none"; };
+  }catch(e){ body.innerHTML = '<div class="hint">加载失败: ' + esc(e.message) + "</div>"; }
+}
+async function renderAdmRecords(body, username){
+  try{
+    const d = await api("/api/admin/users/" + encodeURIComponent(username) + "/history");
+    const s = d.stats || {};
+    const recs = (d.records || []).slice(0, 20);
+    let html = '<div class="stats" style="margin-bottom:10px"><span>总计 ' + (s.total||0) + " 条 · 今日 " + (s.today||0) +
+      " 条 · 成功率 " + (s.total ? (s.success/s.total*100).toFixed(1) : "0.0") + "% · 累计 token " +
+      fmtNum((s.total_prompt_tokens||0)+(s.total_completion_tokens||0)) + "</span></div>";
+    if(!recs.length){ html += '<div class="hint">该用户暂无增强记录</div>'; }
+    else{
+      html += '<div style="overflow-x:auto"><table class="adm-table" style="min-width:640px"><thead><tr><th>时间</th><th>厂商/模型/风格</th><th>状态</th><th>输入摘要</th><th>字数</th><th>耗时</th></tr></thead><tbody>' +
+        recs.map(r=>{
+          const ok = (r.status||"success")==="success";
+          const q = r.quality==="low_quality" ? ' <span class="tag tag-warn">低质量</span>' : "";
+          return "<tr><td>"+esc(r.time||"")+"</td><td>"+esc((r.provider||"")+" / "+(r.model||"")+" / "+(r.style||"—"))+"</td>"+
+            "<td>"+(ok?'<span class="tag tag-ok">成功</span>':'<span class="tag tag-err">失败</span>')+q+"</td>"+
+            "<td>"+esc((r.input||"").slice(0,50))+"</td><td>"+((r.input||"").length)+"→"+((r.output||"").length)+"</td><td>"+(r.duration_ms!=null?r.duration_ms+"ms":"—")+"</td></tr>";
+        }).join("") + "</tbody></table></div>";
+    }
+    html += '<div class="bar" style="margin-top:10px"><button class="btn ghost" onclick="renderAdmSeg()">刷新</button><button class="btn ghost" id="ad-rec-close">收起</button></div>';
+    body.innerHTML = html;
+    const cb = $("ad-rec-close"); if(cb) cb.onclick = ()=>{ $("admin-detail").style.display="none"; };
+  }catch(e){ body.innerHTML = '<div class="hint">加载失败: ' + esc(e.message) + "</div>"; }
+}
+async function loadDefaultCfg(){
+  try{
+    const {config: c} = await api("/api/admin/default-config");
+    fillSel($("dc-provider"), ["(不设)"].concat(Object.keys(window._providers || {})), c.provider ? c.provider : "(不设)");
+    $("dc-url").value = c.base_url || ""; $("dc-model").value = c.model || "";
+    $("dc-key").value = "";
+    $("dc-key").placeholder = c.api_key_set ? "已设置，留空=不修改" : "未设置";
+    $("dc-style").innerHTML = '<option value="">(不设)</option>' + Object.entries(window._styles || {}).map(([l,k])=>`<option value="${k}">${l}</option>`).join("");
+    if(c.style) $("dc-style").value = c.style;
+    fillSel($("dc-temp"), ["(不设)"].concat(window._temps || []), c.temperature || "(不设)");
+    fillSel($("dc-maxtok"), ["(不设)"].concat(window._maxtoks || []), c.max_tokens || "(不设)");
+    $("dc-state").textContent = (c.provider || c.model || c.api_key_set) ? "✓ 已设置默认：新用户建号即预装" : "未设置（新用户走出厂配置）";
+    $("dc-toggle-key").onclick = ()=>{ const el=$("dc-key"); el.type = el.type==="password"?"text":"password"; };
+  }catch(e){ const el=$("dc-state"); if(el) el.textContent = "读取失败"; }
+}
+$("dc-save").addEventListener("click", async ()=>{
+  try{
+    await api("/api/admin/default-config", {method:"POST", body: JSON.stringify({
+      provider: $("dc-provider").value==="(不设)"?"":$("dc-provider").value,
+      api_key: $("dc-key").value.trim(),
+      base_url: $("dc-url").value.trim(), model: $("dc-model").value.trim(),
+      temperature: $("dc-temp").value==="(不设)"?"":$("dc-temp").value,
+      max_tokens: $("dc-maxtok").value==="(不设)"?"":$("dc-maxtok").value,
+      style: $("dc-style").value,
+    })});
+    setStatus("新用户默认配置已保存 ✓");
+    toast("默认配置已保存", "ok");
+    loadDefaultCfg();
+  }catch(e){ setStatus("保存失败: " + e.message); }
+});
+$("dc-clear").addEventListener("click", async ()=>{
+  if(!confirm("清除新用户默认配置？已建账号不受影响。")) return;
+  try{
+    await api("/api/admin/default-config", {method:"POST", body: JSON.stringify({})});
+    setStatus("已清除默认配置");
+    loadDefaultCfg();
+  }catch(e){ setStatus("清除失败: " + e.message); }
+});
+$("btn-admin-refresh").addEventListener("click", ()=>loadAdminAll());
+$("btn-admin-create").addEventListener("click", ()=>{
+  $("cu-name").value=""; $("cu-pass").value=""; $("cu-role").value="user";
+  $("cu-modal").classList.add("show");
+});
+$("cu-cancel").addEventListener("click", ()=> $("cu-modal").classList.remove("show"));
+$("cu-ok").addEventListener("click", async ()=>{
+  try{
+    const d = await api("/api/admin/users", {method:"POST", body: JSON.stringify({
+      username: $("cu-name").value.trim(), password: $("cu-pass").value, role: $("cu-role").value})});
+    $("cu-modal").classList.remove("show");
+    if(d.temp_password) alert("临时密码（仅显示一次，请安全转交本人）：\n\n" + d.temp_password + "\n\n该用户首次登录将被强制改密。");
+    loadAdminUsers(); loadAdmStats();
+  }catch(e){ setStatus("创建失败: " + e.message); }
+});
+
+/* ---------------- 键盘快捷键（P0-3）---------------- */
+document.addEventListener("keydown", e=>{
+  const tag = (e.target && e.target.tagName) || "";
+  const typing = /INPUT|TEXTAREA|SELECT/.test(tag);
+  // Ctrl+K：聚焦打磨档案检索（切到该页并聚焦）
+  if((e.ctrlKey || e.metaKey) && (e.key === "k" || e.key === "K")){
+    e.preventDefault();
+    activatePage("history");
+    setTimeout(()=> $("hist-search").focus(), 60);
+    return;
+  }
+  // Ctrl+Enter：主动作（单条=增强 / 批量=批量增强 / forge=生成指令）
+  if((e.ctrlKey || e.metaKey) && e.key === "Enter"){
+    const active = document.querySelector(".page.active");
+    if(!active) return;
+    e.preventDefault();
+    if(active.id === "page-single") $("btn-enhance").click();
+    else if(active.id === "page-batch") $("btn-batch").click();
+    else if(active.id === "page-forge") $("btn-forge-gen").click();
+    return;
+  }
+  // "/"：非输入态下聚焦检索
+  if(e.key === "/" && !typing){
+    e.preventDefault();
+    activatePage("history");
+    setTimeout(()=> $("hist-search").focus(), 60);
+    return;
+  }
+  // Escape：关闭任何打开的模态
+  if(e.key === "Escape"){
+    document.querySelectorAll(".modal-mask.show").forEach(m=>m.classList.remove("show"));
+    $("force-pw-banner").style.display = $("force-pw-banner").style.display; // 强制改密横幅不关闭
+  }
+});
+
+/* ---------------- 启动 ---------------- */
+(async ()=>{
+  try{
+    await loadIdentity();
+    loadRecentChips();
+    if(!ME.must_change){
+      await loadConfig();
+      updateCounters();
+      setStatus("就绪 · 选择一个功能开始");
+    } else {
+      loadConfig().catch(()=>{});
+      setStatus("请先设置新密码");
+    }
+  }catch(e){ setStatus("初始化失败: " + e.message); }
+})();
+</script>
+</body>
+</html>
