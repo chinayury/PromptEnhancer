@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # Project: 提示词工坊项目
-# Copyright (c) 2026 智维工作室
+# Copyright (C) 2026 智维ITMSKY
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """模板常量：五槽骨架 + 默认禁止项 + 自检清单 + 出口门禁。
 

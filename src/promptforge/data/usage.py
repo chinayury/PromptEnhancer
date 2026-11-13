@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # Project: 提示词工坊项目
-# Copyright (c) 2026 智维工作室
+# Copyright (C) 2026 智维ITMSKY
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """
 Token 用量与成本统计（Web 正式版）。

@@ -9,7 +9,7 @@ description = "提示词工坊 PromptForge —— 本地优先的提示词增强
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "AGPL-3.0-or-later" }
-authors = [{ name = "智维工作室" }]
+authors = [{ name = "智维ITMSKY" }]
 keywords = ["prompt", "enhancement", "llm", "prompt-engineering"]
 classifiers = [
     "Programming Language :: Python :: 3",

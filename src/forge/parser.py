@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # Project: 提示词工坊项目
-# Copyright (c) 2026 智维工作室
+# Copyright (C) 2026 智维ITMSKY
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """文档结构解析器（纯标准库，零远程接口调用）。
 

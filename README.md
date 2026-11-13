@@ -148,8 +148,14 @@ README.md / CHANGELOG.md
 
 ---
 
-## 七、许可证与著作权
+## 七、许可与信息
 
-Copyright (c) 2026 智维工作室。
+- **开发者**：智维ITMSKY
+- **版权**：Copyright (C) 2026 智维ITMSKY
+- **官网**：<http://www.itmsky.com>
+- **许可证**：GNU Affero General Public License v3.0 or later（AGPL-3.0-or-later，全文见 [LICENSE](LICENSE)）
 
-本软件以 **GNU Affero General Public License v3.0 or later（AGPL-3.0-or-later）** 发布，许可证全文见 [LICENSE](LICENSE)。通过网络提供服务时，同样须遵守 AGPL 关于源代码开放的要求。
+> 本程序是自由软件：你可以遵照 GNU Affero 通用公共许可证第3版或后续版本的规定，重新分发和/或修改它。
+> 本程序旨在广泛共享，但不提供任何担保；甚至不包含适销性和特定用途适用性的默示保证。详情请参阅 GNU Affero General Public License。
+> 如果你修改本程序并通过网络向公众提供服务（SaaS、Web、API等在线服务），你必须向该服务的使用者提供对应修改后的完整源代码。
+> 你应当随本程序一同收到 GNU Affero General Public License 的副本；如未收到，详见 <https://www.gnu.org/licenses/>。
