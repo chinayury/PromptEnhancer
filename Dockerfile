@@ -20,7 +20,7 @@ WORKDIR /app
 # pip 源: compose 默认传清华镜像 (国内网络); 海外服务器改回 https://pypi.org/simple
 ARG PIP_INDEX_URL=https://pypi.org/simple
 ENV PIP_INDEX_URL=${PIP_INDEX_URL}
-COPY requirements-web.txt requirements.txt ./
+COPY requirements-web.txt ./
 RUN pip install --no-cache-dir -r requirements-web.txt
 
 # 源码：src 布局，核心层 + Web 层（桌面 GUI 层不进入镜像）
