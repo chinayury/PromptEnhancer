@@ -157,17 +157,22 @@ jobs:
           TAG="${{ github.event.inputs.tag || github.ref_name }}"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
       - name: Login GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
       - name: Build and push
-        run: |
-          set -euo pipefail
-          IMAGE="ghcr.io/chinayury/promptenhancer"
-          VERSION="${{ steps.ver.outputs.version }}"
-          docker build --build-arg PIP_INDEX_URL=https://pypi.org/simple \
-            -t "$IMAGE:$VERSION" -t "$IMAGE:latest" .
-          docker push "$IMAGE:$VERSION"
-          docker push "$IMAGE:latest"
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/chinayury/promptenhancer:${{ steps.ver.outputs.version }}
+            ghcr.io/chinayury/promptenhancer:latest
+          build-args: |
+            PIP_INDEX_URL=https://pypi.org/simple
+          provenance: false
+          sbom: false
 
   release:
     name: Create GitHub Release
@@ -261,7 +266,9 @@ jobs:
             [ -z "$id" ] && continue
             if [[ ",$tags," != *",$VERSION,"* && ",$tags," != *",latest,"* ]]; then
               echo "delete GHCR version: id=$id tags=$tags"
-              gh api -X DELETE "/users/chinayury/packages/container/promptenhancer/versions/$id"
+              if ! gh api -X DELETE "/users/chinayury/packages/container/promptenhancer/versions/$id"; then
+                echo "WARN: GHCR version $id not deletable (continuing)"
+              fi
             fi
           done < versions.tsv
       - name: Delete old workflow artifacts (keep current run)
