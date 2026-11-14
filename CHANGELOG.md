@@ -2,6 +2,42 @@
 
 本文件记录 PromptEnhancer（提示词工坊 PromptForge）的显著变更（新增在前）。
 
+## [2026-11-14] v0.1.1 · 第五轮维护（双模式增强 + doctor 自检 + A/B 风格修复）
+
+> 版本口径调整：自本轮起按维护循环规则随发布升号（常规优化/修复 → patch）；此前 v0.1.0 阶段「不升号、按 CHANGELOG 日期区分轮次」的口径废止。
+
+### Fixed（缺陷修复）
+- **A/B 双版对比风格失效**（D-07）：`/api/enhance` 此前只读已保存配置，双版对比
+  传入的 `style` 被忽略，两版实际始终同风格；新增 `_apply_request_overrides()`
+  统一合并「请求覆盖 > 已保存配置」（`style` / `mode` / `provider` 三个白名单字段，
+  缺省一律不动，历史行为逐字节兼容）。`/api/batch` 同步支持。
+
+### Added（新增功能）
+- **user / system 双模式增强**（借鉴 linshenkx/prompt-optimizer）：输入为系统提示词
+  草稿时选「系统提示词」模式，按角色 / 行为规则 / 输出格式 / 边界标准重写；
+  Web 连接参数卡（目标角色）、桌面 GUI 配置页、CLI `--mode` 三端入口；历史记录
+  新增 `enh_mode` 留痕（惰性补列，旧库无感），CSV / Markdown 导出附带模式。
+  默认「用户提示词」：请求消息与历史版本逐字节一致，本地响应缓存键不串模式。
+- **`doctor` 自检子命令**（借鉴 legeling/PromptHub）：`python -m promptforge cli doctor [--fix]`
+  ——数据库完整性 / journal / WAL 体积 / 版本链孤儿指针 / FTS 索引对账 / 备份留存 /
+  密钥配置状态（只报已配置与否，绝不回显密钥）；`--fix` 执行版本链自愈与检索索引
+  重建；有问题未修返回码 1。
+- **`/api/enhance` `/api/batch` 厂商覆盖**（借鉴 insaaniManav/prompt-forge）：请求体
+  可选 `provider`，仅接受 providers.json 既有预设（Base URL / 模型只取服务端预设，
+  不接受任意 URL），与 CLI `--provider` 同语义。
+
+### Changed（文档与版本声明收敛）
+- 五篇文档「对应代码版本」同步 v0.1.1；健康检查示例响应改为 `<版本号>` 占位，
+  文档不再硬编码具体版本号。
+- `docker-compose.yml` 镜像标签、`Dockerfile` 头注、包 docstring 版本同步 v0.1.1。
+
+### Verified（验证）
+- 23 项冒烟自测全量通过（本地 mock LLM 端点 + 隔离临时数据目录，不触外网）：
+  双模式端到端、缓存键隔离、覆盖参数（合法/非法）、批量、历史留痕、CSV/MD 导出、
+  doctor 新库全绿、引擎单元断言（user 模式消息与历史逐字节一致）；
+  doctor 对真实开发库只读自检通过；GUI 改动经语法编译验证（本机无 tkinter，
+  运行时验证由 CI Windows 矩阵覆盖）。
+
 ## [2026-11-13] v0.1.0 · 项目整理为「纯代码 + 文档」初始版本（src 布局重构）
 
 > 版本号保持 **v0.1.0** 不升号；本轮为目录结构与文档重组，无功能变更。
