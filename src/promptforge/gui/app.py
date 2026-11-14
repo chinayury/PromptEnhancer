@@ -243,6 +243,16 @@ class PromptForgeApp:
             dropdown_fg_color=CARD, dropdown_text_color=TEXT, font=_font(12))
         self.maxtok_cb.grid(row=3, column=3, sticky="ew", padx=(0, 4), **PAD)
 
+        ctk.CTkLabel(grid, text="目标角色", **LBL).grid(row=4, column=0, sticky="e", padx=(0, 10), **PAD)
+        self.mode_var = ctk.StringVar(
+            value=templates.MODE_KEY_TO_LABEL.get(self.cfg.get("mode", "user"), "用户提示词"))
+        self.mode_cb = ctk.CTkComboBox(
+            grid, values=list(templates.MODE_LABEL_TO_KEY.keys()), variable=self.mode_var,
+            height=34, fg_color=CARD, border_color=BORDER, button_color=PRIMARY,
+            button_hover_color=PRIMARY_HOVER, dropdown_fg_color=CARD, dropdown_text_color=TEXT,
+            font=_font(12))
+        self.mode_cb.grid(row=4, column=1, sticky="ew", padx=(0, 16), **PAD)
+
         foot = ctk.CTkFrame(inner, fg_color="transparent")
         foot.grid(row=2, column=0, columnspan=4, sticky="e", pady=(16, 0))
         self.show_key_btn = pill(foot, "◎ 显示", self._toggle_key, False, 90)
@@ -299,6 +309,7 @@ class PromptForgeApp:
             "temperature": self.temp_var.get().strip(),
             "max_tokens": self.maxtok_var.get().strip(),
             "style": templates.STYLE_LABEL_TO_KEY.get(self.style_var.get(), "balanced"),
+            "mode": templates.MODE_LABEL_TO_KEY.get(self.mode_var.get(), "user"),
         }
         if persist:
             db.save_config(cfg)
@@ -372,7 +383,7 @@ class PromptForgeApp:
                 provider=self.provider_var.get(), model=cfg.get("model", ""),
                 base_url=cfg.get("base_url", ""), input_text=text, output_text="",
                 status="failed", error_msg=err[:500], duration_ms=dur, source="single",
-                style=cfg.get("style", "balanced"))
+                style=cfg.get("style", "balanced"), enh_mode=cfg.get("mode", "user"))
             self._set_status("增强失败: " + err)
             self._refresh_history()
             return
@@ -392,7 +403,7 @@ class PromptForgeApp:
             prompt_tokens=result.get("prompt_tokens"),
             completion_tokens=result.get("completion_tokens"),
             request_id=result.get("request_id"), quality=quality,
-            style=cfg.get("style", "balanced"))
+            style=cfg.get("style", "balanced"), enh_mode=cfg.get("mode", "user"))
         self._refresh_history()
         qnote = "（质量偏低：疑似复述原文）" if quality else ""
         self._set_status("增强完成 ✓  已记入历史档案 %s%s" % (qnote, length_note))
@@ -483,7 +494,7 @@ class PromptForgeApp:
                     source="batch", prompt_tokens=result.get("prompt_tokens"),
                     completion_tokens=result.get("completion_tokens"),
                     request_id=result.get("request_id"), quality=quality,
-                    style=cfg.get("style", "balanced"))
+                    style=cfg.get("style", "balanced"), enh_mode=cfg.get("mode", "user"))
                 out_parts.append("【%d】原始：%s\n增强：%s\n" % (i, line, output))
                 ok += 1
             else:
@@ -491,7 +502,8 @@ class PromptForgeApp:
                     created_at=time.strftime("%Y-%m-%d %H:%M:%S"), provider=provider,
                     model=cfg.get("model", ""), base_url=cfg.get("base_url", ""),
                     input_text=line, output_text="", status="failed", error_msg=err[:500],
-                    duration_ms=dur, source="batch", style=cfg.get("style", "balanced"))
+                    duration_ms=dur, source="batch", style=cfg.get("style", "balanced"),
+                    enh_mode=cfg.get("mode", "user"))
                 out_parts.append("【%d】原始：%s\n失败：%s\n" % (i, line, err))
                 fail += 1
             self.root.after(0, self._batch_progress, i, len(lines), ok, fail)

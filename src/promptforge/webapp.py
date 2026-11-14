@@ -449,6 +449,7 @@ def api_get_config():
         "env_key_injected": bool(os.environ.get("PROMPTFORGE_API_KEY")),
         "providers": load_providers(),
         "styles": templates.STYLE_LABEL_TO_KEY,
+        "modes": templates.MODE_KEY_TO_LABEL,
         "temp_options": templates.TEMP_OPTIONS,
         "maxtoken_options": templates.MAXTOKEN_OPTIONS,
         "version": __version__,
@@ -460,6 +461,9 @@ def _validate_cfg(body):
     style = body.get("style") or "balanced"
     if style not in templates.STYLE_KEY_TO_LABEL:
         raise ValueError("增强风格非法")
+    mode = body.get("mode") or "user"
+    if mode not in engine.MODE_WHITELIST:
+        raise ValueError("增强模式非法（仅支持 user / system）")
     return {
         "provider": (body.get("provider") or "").strip(),
         "api_key": (body.get("api_key") or "").strip(),
@@ -468,7 +472,42 @@ def _validate_cfg(body):
         "temperature": str(body.get("temperature") or "0.7").strip(),
         "max_tokens": str(body.get("max_tokens") or "1024").strip(),
         "style": style,
+        "mode": mode,
     }
+
+
+def _apply_request_overrides(cfg, body):
+    """把请求体里的可选覆盖项合并进有效配置（缺省一律不动，行为兼容）。
+
+    修复项（2026-11-14 第五轮）：此前 /api/enhance 只用已保存配置，A/B 双版
+    对比传来的 style 一直被忽略（两版风格实际相同）；现按「请求覆盖 > 已保存
+    配置」合并，A/B 恢复按所选风格各生成一版。
+      - style：取值须在 STYLE_KEY_TO_LABEL 白名单内；
+      - mode：取值须在 engine.MODE_WHITELIST（user/system）内；
+      - provider：须是 providers.json 既有预设（base_url/model 仅取自服务端
+        预设，绝不接受请求传入的任意 URL——与 CLI --provider 同语义）。
+    校验不通过抛 ValueError，由调用方转 400。"""
+    style = body.get("style")
+    if style:
+        if style not in templates.STYLE_KEY_TO_LABEL:
+            raise ValueError("增强风格非法")
+        cfg["style"] = style
+    mode = body.get("mode")
+    if mode:
+        if mode not in engine.MODE_WHITELIST:
+            raise ValueError("增强模式非法（仅支持 user / system）")
+        cfg["mode"] = mode
+    provider = (body.get("provider") or "").strip()
+    if provider:
+        preset = load_providers().get(provider)
+        if not preset:
+            raise ValueError("未知厂商：%s" % provider)
+        cfg["provider"] = provider
+        if preset.get("base_url"):
+            cfg["base_url"] = preset["base_url"]
+        if preset.get("model"):
+            cfg["model"] = preset["model"]
+    return cfg
 
 
 @app.post("/api/config")
@@ -512,7 +551,8 @@ def _record(cfg, text, output, status, dur, source, err="", result=None):
         completion_tokens=_safe_int(result.get("completion_tokens")),
         request_id=result.get("request_id"),
         quality=result.get("quality", ""),
-        style=cfg.get("style", "balanced"))
+        style=cfg.get("style", "balanced"),
+        enh_mode=cfg.get("mode", "user"))
     # 用量统计（全局库 api_usage 表）：仅成功调用产生 token 明细，
     # 失败无 usage 不记；响应缺失 usage 时按 0 记，统计失败不影响增强结果。
     if status == "success":
@@ -574,6 +614,10 @@ def api_enhance():
     if len(text) > MAX_INPUT_CHARS:
         return jsonify({"error": "输入过长（上限 %d 字符），请精简后重试" % MAX_INPUT_CHARS}), 400
     cfg = _effective_cfg()
+    try:
+        _apply_request_overrides(cfg, body)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
     t0 = time.time()
     try:
         result = engine.enhance(cfg, text)
@@ -614,6 +658,10 @@ def api_batch():
         return jsonify({"error": "单条输入过长（上限 %d 字符），请精简后分批提交"
                         % MAX_INPUT_CHARS}), 400
     cfg = _effective_cfg()
+    try:
+        _apply_request_overrides(cfg, body)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
     results, ok, fail = [], 0, 0
     for i, line in enumerate(lines, 1):
         t0 = time.time()
@@ -638,7 +686,7 @@ def api_batch():
 # =====================================================================
 # 历史档案（当前用户工作区）
 # =====================================================================
-_CSV_HEADER = ["时间", "厂商", "模型", "风格", "状态", "输入字数",
+_CSV_HEADER = ["时间", "厂商", "模型", "风格", "模式", "状态", "输入字数",
                "输出字数", "质量", "输入", "输出", "RequestID"]
 
 
@@ -649,7 +697,8 @@ def _records_csv_bytes(recs):
     for it in recs:
         w.writerow([
             it.get("time", ""), it.get("provider", ""),
-            it.get("model", ""), it.get("style", ""), it.get("status", ""),
+            it.get("model", ""), it.get("style", ""), it.get("mode", "user"),
+            it.get("status", ""),
             len(it.get("input", "") or ""), len(it.get("output", "") or ""),
             it.get("quality", ""), it.get("input", ""), it.get("output", ""),
             it.get("request_id", ""),
@@ -681,8 +730,10 @@ def _records_md_text(recs):
         ok = (it.get("status") or "success") == "success"
         parts.append("\n## %d. [%s] %s · %s\n" % (
             i, it.get("time", ""), it.get("provider", ""), it.get("model", "")))
-        parts.append("- 风格：%s｜状态：%s\n" % (it.get("style", "") or "—",
-                                                "成功" if ok else "失败"))
+        parts.append("- 风格：%s｜模式：%s｜状态：%s\n" % (
+            it.get("style", "") or "—",
+            templates.MODE_KEY_TO_LABEL.get(it.get("mode", "user"), it.get("mode", "user") or "user"),
+            "成功" if ok else "失败"))
         parts.append("\n**输入**\n\n```text\n%s\n```\n" % (it.get("input", "") or ""))
         if it.get("output"):
             parts.append("\n**输出**\n\n```text\n%s\n```\n" % it["output"])

@@ -10,22 +10,29 @@
   python -m promptforge cli --text "写个登录页"
   python -m promptforge cli --file prompts.txt --out enhanced.csv
   python -m promptforge cli --file prompts.txt --provider DeepSeek --style 更技术
+  python -m promptforge cli --text "You are a helpful bot" --mode system
+  python -m promptforge cli doctor            # 数据库/版本链/检索索引自检
+  python -m promptforge cli doctor --fix      # 自检并修复（版本链指针/检索索引）
 
 特性：
   - 复用与 GUI 完全相同的增强引擎与数据库连接，保证行为一致。
   - 支持单条文本、文件批处理（每行一条）、CSV 导出。
   - 连接配置来自本地数据库（与 GUI 共享）；可用环境变量 PROMPTFORGE_API_KEY
     覆盖密钥，避免明文落库风险。
+  - doctor 自检子命令（借鉴 legeling/PromptHub doctor database-lock）：
+    健康检查不修改任何数据；--fix 才执行版本链自愈与检索索引重建。
 """
 
 import os
 import sys
 import argparse
 import csv
+import sqlite3
 
 from . import __version__
 from .core import engine, templates
 from .data import database as db
+from .data import versions as verchain
 from .config import load_providers
 from .utils.logging_setup import ensure_utf8_console
 
@@ -42,6 +49,7 @@ def _build_cfg(args, saved):
         "temperature": args.temperature or saved.get("temperature", "0.7"),
         "max_tokens": args.max_tokens or saved.get("max_tokens", "1024"),
         "style": templates.STYLE_LABEL_TO_KEY.get(args.style, saved.get("style", "balanced")),
+        "mode": getattr(args, "mode", None) or saved.get("mode", "user"),
     }
 
 
@@ -53,21 +61,139 @@ def _run_one(cfg, text):
         return False, "", "", str(e)
 
 
+def _run_doctor(fix=False):
+    """doctor 自检（借鉴 legeling/PromptHub doctor database-lock）。
+
+    只读检查：库文件、integrity_check、journal/busy_timeout、WAL 体积、
+    版本链孤儿指针、FTS 索引对账、备份留存、密钥配置状态（绝不回显密钥）。
+    --fix 额外执行：版本链自愈 repair_consistency() 与 FTS 索引 rebuild。
+    输出全部为有界摘要；发现且未修复的问题返回 1，其余返回 0。"""
+    db.init_db()
+    problems = []
+    print("PromptForge doctor v%s" % __version__)
+    print("[1/7] 数据目录: %s" % db._base_dir())
+    if os.path.exists(db.get_db_path()):
+        print("      数据库: %s（%d KB）" % (os.path.basename(db.get_db_path()),
+                                             os.path.getsize(db.get_db_path()) // 1024))
+    else:
+        print("      数据库: 尚未创建（首次使用时自动建立）")
+
+    conn = db._conn()
+    try:
+        integrity = conn.execute("PRAGMA integrity_check").fetchall()
+        ok = len(integrity) == 1 and integrity[0][0] == "ok"
+        print("[2/7] integrity_check: %s" % (integrity[0][0] if ok else
+                                             "; ".join(r[0] for r in integrity[:5])))
+        if not ok:
+            problems.append("integrity_check 未通过")
+        mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
+        busy = conn.execute("PRAGMA busy_timeout").fetchone()[0]
+        print("[3/7] journal_mode=%s busy_timeout=%dms" % (mode, busy))
+        if str(mode).lower() != "wal":
+            problems.append("journal_mode=%s（预期 wal）" % mode)
+    finally:
+        conn.close()
+
+    wal = db.get_db_path() + "-wal"
+    shm = db.get_db_path() + "-shm"
+    wal_kb = os.path.getsize(wal) // 1024 if os.path.exists(wal) else 0
+    print("[4/7] WAL 文件: %d KB" % wal_kb)
+
+    # 版本链孤儿指针（只读统计；--fix 执行自愈）
+    conn = db._conn()
+    try:
+        dangling = conn.execute(
+            "SELECT COUNT(*) FROM enhance_records r "
+            "WHERE r.current_version_id IS NOT NULL AND NOT EXISTS "
+            "(SELECT 1 FROM prompt_versions v WHERE v.id=r.current_version_id "
+            " AND v.record_id=r.id)").fetchone()[0]
+    except sqlite3.OperationalError:
+        dangling = 0        # 版本链结构尚未建立 → 无指针可悬挂
+    finally:
+        conn.close()
+    print("[5/7] 版本链孤儿指针: %d 条" % dangling)
+    if dangling:
+        if fix:
+            rep = verchain.repair_consistency()
+            print("      已自愈: 扫描 %d 条，修复 %d 条" % (rep["scanned"], rep["repaired"]))
+            if rep["repaired"] == 0:
+                problems.append("存在孤儿指针但自愈未修复（可能为合法回滚点，已保留）")
+            dangling = max(0, dangling - rep["repaired"])
+        else:
+            problems.append("存在 %d 条孤儿指针（可用 --fix 自愈）" % dangling)
+
+    # FTS 索引对账（like 模式无索引可对账，直接跳过）
+    fts_mode = db.ensure_search_index()
+    if fts_mode == "fts":
+        conn = db._conn()
+        try:
+            n_base = conn.execute("SELECT COUNT(*) FROM enhance_records").fetchone()[0]
+            n_idx = conn.execute("SELECT COUNT(*) FROM hist_fts").fetchone()[0]
+        finally:
+            conn.close()
+        print("[6/7] 检索索引: fts（基表 %d / 索引 %d）" % (n_base, n_idx))
+        if n_base != n_idx:
+            if fix:
+                conn = db._conn()
+                try:
+                    conn.execute("INSERT INTO hist_fts(hist_fts) VALUES('rebuild')")
+                    conn.commit()
+                finally:
+                    conn.close()
+                print("      已重建索引")
+            else:
+                problems.append("FTS 索引与基表行数不一致（%d/%d，可用 --fix 重建）"
+                                % (n_idx, n_base))
+    else:
+        print("[6/7] 检索索引: like 回退（无 FTS 索引可对账）")
+
+    backups = []
+    if os.path.isdir(db.BACKUP_DIR):
+        backups = sorted((f for f in os.listdir(db.BACKUP_DIR) if f.endswith(".db")),
+                         key=lambda f: os.path.getmtime(os.path.join(db.BACKUP_DIR, f)),
+                         reverse=True)
+    print("[7/7] 备份: %d 份（上限 %d）" % (len(backups), db.BACKUP_RETAIN))
+    saved = db.load_config()
+    has_key = bool(saved.get("api_key")) or bool(os.environ.get("PROMPTFORGE_API_KEY"))
+    print("      连接配置: provider=%s model=%s 密钥=%s 模式=%s" % (
+        saved.get("provider", "—"), saved.get("model", "—"),
+        "已配置" if has_key else "未配置",
+        saved.get("mode", "user")))
+
+    if problems:
+        for p in problems:
+            print("[problem] %s" % p)
+        print("doctor: 发现 %d 个问题%s" % (len(problems),
+                                           "（已修复）" if fix and not problems else ""))
+        return 1 if problems else 0
+    print("doctor: 全部通过")
+    return 0
+
+
 def run(argv=None):
     ensure_utf8_console()
     parser = argparse.ArgumentParser(
         prog="promptforge", description="提示词工坊 命令行模式 v%s" % __version__)
+    parser.add_argument("command", nargs="?", choices=["doctor"],
+                        help="子命令：doctor=数据库/版本链/检索索引自检")
+    parser.add_argument("--fix", action="store_true",
+                        help="doctor：执行修复（版本链自愈 + 检索索引重建）")
     parser.add_argument("--text", help="单条待增强的提示词")
     parser.add_argument("--file", help="批量输入文件，每行一条提示词")
     parser.add_argument("--out", help="批量结果输出路径（CSV）")
     parser.add_argument("--provider", help="厂商名（覆盖已保存配置）")
     parser.add_argument("--base-url", dest="base_url", help="Base URL（覆盖已保存配置）")
     parser.add_argument("--model", help="模型名（覆盖已保存配置）")
+    parser.add_argument("--mode", default="user", choices=["user", "system"],
+                        help="增强模式：user=普通提示词（默认）；system=系统提示词草稿")
     parser.add_argument("--style", default="均衡", choices=list(templates.STYLE_LABEL_TO_KEY.keys()),
                         help="增强风格")
     parser.add_argument("--temperature", help="温度（覆盖已保存配置）")
     parser.add_argument("--max-tokens", dest="max_tokens", help="最大长度（覆盖已保存配置）")
     args = parser.parse_args(argv)
+
+    if args.command == "doctor":
+        return _run_doctor(fix=args.fix)
 
     if not args.text and not args.file:
         parser.error("请至少提供 --text 或 --file 之一")

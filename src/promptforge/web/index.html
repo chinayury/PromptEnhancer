@@ -461,6 +461,7 @@ pre.output{background:var(--paper);border:1px solid var(--line);border-left:3px 
         <div class="field"><label for="cfg-model">模型</label><input type="text" id="cfg-model" placeholder="model name"></div>
         <div class="field full"><label for="cfg-url">Base URL</label><input type="text" id="cfg-url" placeholder="https://.../v1"></div>
         <div class="field"><label for="cfg-style">增强风格</label><select id="cfg-style"></select></div>
+        <div class="field"><label for="cfg-mode">目标角色</label><select id="cfg-mode"></select></div>
         <div class="field"><label for="cfg-temp">温度</label><select id="cfg-temp"></select></div>
         <div class="field"><label for="cfg-maxtok">最大长度</label><select id="cfg-maxtok"></select></div>
         <div class="field" style="justify-content:flex-end;align-items:flex-end"><span class="hint" id="cfg-env-note" style="display:none">（API Key 已由环境变量注入）</span></div>
@@ -856,6 +857,11 @@ async function loadConfig(){
   Object.entries(d.styles).forEach(([label,key])=>{
     const o = document.createElement("option"); o.value = key; o.textContent = label; styleSel.appendChild(o);
   });
+  const modeSel = $("cfg-mode");
+  modeSel.innerHTML = "";
+  Object.entries(d.modes || {"用户提示词":"user","系统提示词":"system"}).forEach(([key,label])=>{
+    const o = document.createElement("option"); o.value = key; o.textContent = label; modeSel.appendChild(o);
+  });
   const fill = (sel, arr) => { sel.innerHTML = ""; arr.forEach(v=>{ const o=document.createElement("option"); o.value=v; o.textContent=v; sel.appendChild(o); }); };
   fill($("cfg-temp"), d.temp_options);
   fill($("cfg-maxtok"), d.maxtoken_options);
@@ -865,6 +871,7 @@ async function loadConfig(){
   $("cfg-url").value = c.base_url || "";
   $("cfg-model").value = c.model || "";
   styleSel.value = c.style || "balanced";
+  modeSel.value = c.mode || "user";
   if(d.temp_options.includes(c.temperature)) $("cfg-temp").value = c.temperature;
   if(d.maxtoken_options.includes(c.max_tokens)) $("cfg-maxtok").value = c.max_tokens;
   window._providers = d.providers;
@@ -904,7 +911,7 @@ $("cfg-save").addEventListener("click", async ()=>{
       provider: $("cfg-provider").value, api_key: $("cfg-key").value.trim(),
       base_url: $("cfg-url").value.trim(), model: $("cfg-model").value.trim(),
       temperature: $("cfg-temp").value, max_tokens: $("cfg-maxtok").value,
-      style: $("cfg-style").value,
+      style: $("cfg-style").value, mode: $("cfg-mode").value,
     })});
     setStatus("配置已保存到本地数据库（promptforge.db）");
     toast("配置已保存", "ok");

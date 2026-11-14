@@ -26,7 +26,9 @@ import urllib.error
 from ..utils.logging_setup import get_logger
 from ..data import llm_cache
 from .lint import MAX_INPUT_CHARS
-from .templates import SYSTEM_TEMPLATE, USER_TEMPLATE, STYLE_GUIDANCE, MAX_OUTPUT_CHARS
+from .templates import (SYSTEM_TEMPLATE, USER_TEMPLATE, STYLE_GUIDANCE,
+                        MAX_OUTPUT_CHARS, SYSTEM_MODE_TEMPLATE,
+                        SYSTEM_MODE_USER_TEMPLATE, ENHANCE_MODES)
 
 logger = get_logger("promptforge.core.engine")
 
@@ -38,6 +40,8 @@ MAX_RETRIES = 2  # 空结果重试次数（不计入正式请求上限）
 
 TEMP_WHITELIST = {"0.3", "0.5", "0.7", "0.9", "1.0"}
 MAXTOKEN_WHITELIST = {"512", "1024", "2048", "4096"}
+# 增强模式白名单（user=普通提示词增强；system=系统提示词草稿重写）。
+MODE_WHITELIST = set(ENHANCE_MODES)
 
 # 响应缓存总开关：环境变量 PROMPTFORGE_CACHE，默认开启；显式 0/false/no/off 关闭。
 _CACHE_OFF = {"0", "false", "no", "off"}
@@ -146,6 +150,11 @@ def validate_config(cfg: dict) -> dict:
             raise ConfigError("最大长度非法，请从下拉框选择或填写合法整数",
                               code=EnhanceError.CODE_MODEL_NOT_CONFIGURED,
                               hint="最大长度请从下拉框选择，或填写一个正整数")
+    mode = (cfg.get("mode") or "user").strip()
+    if mode not in MODE_WHITELIST:
+        raise ConfigError("增强模式非法（仅支持 user / system）",
+                          code=EnhanceError.CODE_MODEL_NOT_CONFIGURED,
+                          hint="增强模式仅支持「用户提示词 / 系统提示词」，请从下拉框选择")
 
     return {
         "api_key": api_key,
@@ -154,6 +163,7 @@ def validate_config(cfg: dict) -> dict:
         "temperature": temperature,
         "max_tokens": max_tokens,
         "style": cfg.get("style", "balanced"),
+        "mode": mode,
     }
 
 
@@ -257,8 +267,19 @@ def _enhance_messages(cfg: dict, text: str) -> list:
     """构造增强用的 system/user 双模板消息。
 
     缓存键与实际请求共用同一构造：既保证「命中键」与「真实请求体」严格一致，
-    又不改变任何既有请求语义（与旧 _do_one_request 内联构造逐字节等价）。"""
+    又不改变任何既有请求语义（与旧 _do_one_request 内联构造逐字节等价）。
+
+    增强模式（mode，借鉴 linshenkx/prompt-optimizer 的双模式优化）：
+      - user（缺省）：SYSTEM_TEMPLATE + USER_TEMPLATE，与历史行为逐字节一致；
+      - system：SYSTEM_MODE_TEMPLATE + SYSTEM_MODE_USER_TEMPLATE，
+        把输入按「系统提示词草稿」标准重写。"""
     style_note = STYLE_GUIDANCE.get(cfg["style"], "")
+    if cfg.get("mode", "user") == "system":
+        system_content = SYSTEM_MODE_TEMPLATE + ("\n\n" + style_note if style_note else "")
+        return [
+            {"role": "system", "content": system_content},
+            {"role": "user", "content": SYSTEM_MODE_USER_TEMPLATE.replace("{input}", text)},
+        ]
     system_content = SYSTEM_TEMPLATE + ("\n\n" + style_note if style_note else "")
     return [
         {"role": "system", "content": system_content},

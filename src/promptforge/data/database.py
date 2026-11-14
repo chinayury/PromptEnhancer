@@ -55,6 +55,7 @@ DEFAULT_CONFIG = {
     "temperature": "0.7",
     "max_tokens": "1024",
     "style": "balanced",
+    "mode": "user",
 }
 
 
@@ -270,6 +271,10 @@ def init_db():
     _version_ensured.discard(_db_path())   # 测试夹具可能删库重建，缓存必须失效
     ensure_version_schema()
 
+    # 配置表 mode 列（user/system 双模式）：新库/旧库统一惰性补齐。
+    _config_ensured.discard(_db_path())    # 测试夹具删库重建时同步失效
+    _ensure_config_columns()
+
 
 # =====================================================================
 # 提示词版本链（F2）表结构与惰性迁移
@@ -342,6 +347,9 @@ def ensure_version_schema():
             # 历史收藏（P1-1，2026-11-08 三轮迭代）：惰性补列，默认 0，旧库无感
             if not _column_exists(conn.cursor(), "enhance_records", "favorite"):
                 conn.execute("ALTER TABLE enhance_records ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0")
+            # 增强模式留痕（2026-11-14 第五轮）：user/system 双模式，旧库无感默认 user
+            if not _column_exists(conn.cursor(), "enhance_records", "enh_mode"):
+                conn.execute("ALTER TABLE enhance_records ADD COLUMN enh_mode TEXT")
             conn.commit()
         finally:
             conn.close()
@@ -351,6 +359,30 @@ def ensure_version_schema():
 def _column_exists(cur, table, column):
     rows = cur.execute("PRAGMA table_info(%s)" % table).fetchall()
     return any(r[1] == column for r in rows)
+
+
+# app_config 的 mode 列（2026-11-14 第五轮 user/system 双模式）：与 enh_mode 同批加入。
+# Web 多用户工作区库不走 init_db，配置读写入口必须惰性补列，否则旧工作区库
+# load_config 的 SELECT 会因 no such column 静默跌回默认配置（丢用户已存配置）。
+_config_ensured = set()
+
+
+def _ensure_config_columns():
+    """确保当前库 app_config 具备 mode 列（幂等，每库路径只真正执行一次）。"""
+    path = _db_path()
+    if path in _config_ensured:
+        return
+    with _version_lock:                      # 复用库结构迁移锁，避免交叉 ALTER
+        if path in _config_ensured:
+            return
+        conn = _conn()
+        try:
+            if not _column_exists(conn.cursor(), "app_config", "mode"):
+                conn.execute("ALTER TABLE app_config ADD COLUMN mode TEXT")
+            conn.commit()
+        finally:
+            conn.close()
+        _config_ensured.add(path)
 
 
 def _migrate_columns(cur, conn):
@@ -430,11 +462,12 @@ def _migrate_legacy_json():
 # 配置读写
 # =====================================================================
 def load_config():
+    _ensure_config_columns()
     try:
         conn = _conn()
         cur = conn.cursor()
         cur.execute(
-            "SELECT provider, api_key, base_url, model, temperature, max_tokens, style "
+            "SELECT provider, api_key, base_url, model, temperature, max_tokens, style, mode "
             "FROM app_config WHERE id=1")
         row = cur.fetchone()
         conn.close()
@@ -447,6 +480,7 @@ def load_config():
                 "temperature": (row[4] or DEFAULT_CONFIG["temperature"]),
                 "max_tokens": (row[5] or DEFAULT_CONFIG["max_tokens"]),
                 "style": (row[6] or DEFAULT_CONFIG["style"]),
+                "mode": (row[7] or DEFAULT_CONFIG["mode"]),
             }
     except Exception as e:
         logger.warning("读取配置失败，使用默认配置: %s", e)
@@ -454,16 +488,17 @@ def load_config():
 
 
 def save_config(cfg):
+    _ensure_config_columns()
     conn = _conn()
     cur = conn.cursor()
     cur.execute(
         "INSERT OR REPLACE INTO app_config "
-        "(id, provider, api_key, base_url, model, temperature, max_tokens, style, updated_at) "
-        "VALUES (1,?,?,?,?,?,?,?,?)",
+        "(id, provider, api_key, base_url, model, temperature, max_tokens, style, mode, updated_at) "
+        "VALUES (1,?,?,?,?,?,?,?,?,?)",
         (cfg.get("provider", "DeepSeek"), cfg.get("api_key", ""),
          cfg.get("base_url", ""), cfg.get("model", ""),
          str(cfg.get("temperature", "0.7")), str(cfg.get("max_tokens", "1024")),
-         cfg.get("style", "balanced"), _now_iso()))
+         cfg.get("style", "balanced"), cfg.get("mode", "user"), _now_iso()))
     conn.commit()
     conn.close()
     logger.info("配置已保存（provider=%s）", cfg.get("provider"))
@@ -475,19 +510,22 @@ def save_config(cfg):
 def append_record(created_at, provider, model, base_url, input_text, output_text,
                   status, error_msg="", duration_ms=None, source="single",
                   prompt_tokens=None, completion_tokens=None, request_id=None,
-                  quality="", style=""):
-    """写入一条业务记录，返回新行 id（Web 层用它把增强结果固化为版本链锚点）。"""
+                  quality="", style="", enh_mode="user"):
+    """写入一条业务记录，返回新行 id（Web 层用它把增强结果固化为版本链锚点）。
+
+    enh_mode：增强模式留痕（user/system，2026-11-14 第五轮）；缺省 user，
+    与历史行为兼容。"""
     conn = _conn()
     cur = conn.cursor()
     cur.execute(
         "INSERT INTO enhance_records "
         "(created_at,date,provider,model,base_url,input_text,output_text,"
         "input_chars,output_chars,status,error_msg,duration_ms,source,"
-        "prompt_tokens,completion_tokens,request_id,quality,style) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "prompt_tokens,completion_tokens,request_id,quality,style,enh_mode) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (created_at, created_at[:10], provider, model, base_url, input_text, output_text,
          len(input_text), len(output_text), status, error_msg, duration_ms, source,
-         prompt_tokens, completion_tokens, request_id, quality, style))
+         prompt_tokens, completion_tokens, request_id, quality, style, enh_mode))
     conn.commit()
     rid = cur.lastrowid
     conn.close()
@@ -503,12 +541,13 @@ def _record_dicts(rows):
         "completion_tokens": r[11], "request_id": r[12] or "",
         "current_version_id": r[13],
         "favorite": bool(r[14] or 0),
+        "mode": r[15] or "user",
     } for r in rows]
 
 
 _RECORD_COLS = ("id, created_at, provider, model, input_text, output_text, status, "
                 "duration_ms, quality, style, prompt_tokens, completion_tokens, "
-                "request_id, current_version_id, favorite")
+                "request_id, current_version_id, favorite, enh_mode")
 
 
 def get_record(record_id):

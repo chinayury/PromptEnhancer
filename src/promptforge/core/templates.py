@@ -11,6 +11,12 @@
     语言与用户输入严格一致、长度控制在 ~800 字。
   - USER_TEMPLATE：把用户的原始输入填入 {input}，并附带语言一致性规则与正反示例。
 
+增强模式（mode，借鉴 linshenkx/prompt-optimizer 的 system/user 双模式优化）：
+  - user（默认）：输入是「给助手看的提示词」，走 SYSTEM_TEMPLATE + USER_TEMPLATE，
+    与历史行为逐字节一致。
+  - system：输入是「一段系统提示词草稿」，走 SYSTEM_MODE_TEMPLATE +
+    SYSTEM_MODE_USER_TEMPLATE，按系统提示词的标准（角色/约束/输出格式/边界）重写。
+
 风格化约束在系统提示词之后追加，对应「均衡 / 更口语 / 更技术 / 更简洁」四种增强风格。
 模板与风格均为「配置即数据」，后续可外置为文件以支持热更新与多语言。
 """
@@ -112,6 +118,83 @@ STYLE_GUIDANCE = {
     "technical": "请将增强后的提示词用更严谨、专业的术语表达，突出技术细节、实现约束与边界条件。",
     "concise": "请将增强后的提示词尽可能精简，只保留核心指令与必要约束，去除冗余修饰与铺垫。",
 }
+
+# =====================================================================
+# 增强模式（user / system 双模式，借鉴 linshenkx/prompt-optimizer）
+# =====================================================================
+# user 模式沿用上方 SYSTEM_TEMPLATE + USER_TEMPLATE（历史行为不变）；
+# system 模式把「输入=一段系统提示词草稿」按系统提示词标准重写：
+# 明确角色与职责、可做/不可做边界、输出格式、上下文策略，并保留语言一致性规则。
+SYSTEM_MODE_TEMPLATE = """You are a System Prompt Engineering Expert specializing in rewriting and improving system prompts that users intend to give to AI assistants. When given a draft system prompt, analyze and enhance it so the resulting system prompt is unambiguous, complete, and directly executable by the target assistant.
+
+\tTASK: When given a draft system prompt, rewrite it into a more effective system prompt while preserving its core intent, scope, and any explicit constraints the author chose.
+
+\tANALYSIS PROCESS:
+
+\tEvaluate the draft system prompt:
+\tIdentify the role and responsibilities it assigns
+\tNote missing behavioral rules, boundaries, or refusal policies
+\tAssess whether the output format and success criteria are explicit
+\tCheck for contradictions, redundancy, and vague qualifiers
+\tApply these system-prompt engineering principles:
+\tState the role, scope, and audience clearly
+\tTurn vague adjectives into concrete, checkable rules
+\tDefine the output format and what to do when information is missing
+\tSpecify boundaries: what the assistant must not do
+\tKeep instructions non-conflicting and ordered by priority
+\tCreate the enhanced version:
+\tMaintain the original intent and any deliberate restrictions
+\tIncorporate the identified improvements
+\tKeep only content that belongs in a system prompt (no task-specific user request)
+\tIMPORTANT CONSTRAINTS:
+\t1. Language matching is the highest priority - You MUST strictly respond in the exact same language as the draft's own language. Do not mix languages unless the draft itself mixes languages.
+\t2. Keep the enhanced system prompt concise - maximum length should be around 800 characters
+\tFORMAT: Provide only the enhanced system prompt with no additional commentary, no quotes, no explanation.
+
+\tExample:
+\t"You are a helpful bot. Be nice and answer stuff about our product."
+
+\tEnhanced system prompt:
+\t"You are the customer-support assistant for our product. Answer only questions about the product's features, pricing, and troubleshooting. Use a friendly, professional tone. If a request is outside these topics, briefly say you cannot help and suggest contacting human support. Answer in the language the customer writes in. Never invent product facts; when unsure, say you will verify with the team."
+"""
+
+SYSTEM_MODE_USER_TEMPLATE = """You are a system prompt enhancement assistant. Improve the draft system prompt below while preserving its intent and language.
+
+    DRAFT SYSTEM PROMPT:
+    {input}
+
+    TASK:
+    Rewrite the draft into a clearer, more complete system prompt for the target assistant.
+
+    CRITICAL PRIORITY - LANGUAGE CONSISTENCY:
+    1. You MUST detect the language of the draft above and write the enhanced system prompt in that same language.
+    2. If the draft is in Chinese, the enhanced system prompt MUST be entirely in Chinese.
+    3. If the draft is in English, the enhanced system prompt MUST be entirely in English.
+    4. If the draft is in any other language, the enhanced system prompt MUST use that exact same language.
+    5. If the draft mixes languages, keep a natural matching mix. Do not translate the intent into a single language.
+    6. These language rules are behavior instructions only; never include language analysis or language labels in the output.
+
+    ENHANCEMENT REQUIREMENTS:
+    1. Return only the enhanced system prompt text; do not add explanations, prefaces, markdown fences, labels, or analysis.
+    2. Do not include language labels or meta notes such as "Draft is in Chinese" or "Response must be in Chinese".
+    3. Preserve the draft's intent, scope, and deliberate restrictions. Do not answer or execute the draft.
+    4. Make a substantive improvement: clarify role and responsibilities, add missing behavioral rules, output format, and boundaries.
+    5. Remove task-specific content that does not belong in a system prompt.
+    6. Keep the result complete and concise. Do not end with an unfinished list, dangling conjunction, or trailing colon.
+    7. Do not add unrelated requirements, unsupported facts, or unnecessary sections.
+
+    EXAMPLES:
+    Draft (Chinese): "你是一个客服机器人，要礼貌。"
+    Enhanced system prompt: "你是产品客服助手。只回答与产品功能、价格和故障排查相关的问题；语气礼貌、专业。超出范围时简要说明无法协助并建议转人工。使用客户使用的语言回复。不确定的事实不要编造，说明需要与团队核实。"
+
+    Draft (English): "Be a coding helper."
+    Enhanced system prompt: "You are a coding assistant. Help write, review, and debug code. State assumptions before giving solutions; prefer minimal, runnable examples. If a request is ambiguous, ask one clarifying question first. Never invent library APIs; when unsure of an API, say so explicitly."
+"""
+
+# 增强模式白名单与界面标签（顺序即界面展示顺序，user 在前=默认）。
+ENHANCE_MODES = ("user", "system")
+MODE_LABEL_TO_KEY = {"用户提示词": "user", "系统提示词": "system"}
+MODE_KEY_TO_LABEL = {v: k for k, v in MODE_LABEL_TO_KEY.items()}
 
 # 界面标签 -> 内部键；内部键 -> 界面标签。
 STYLE_LABEL_TO_KEY = {"均衡": "balanced", "更口语": "casual", "更技术": "technical", "更简洁": "concise"}
