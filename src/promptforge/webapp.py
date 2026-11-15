@@ -66,6 +66,7 @@ from .data import database as db
 from .data import usage as usage_db
 from .data import users
 from .data import versions as verchain
+from .data import llm_cache
 from .config import load_providers
 from .utils.logging_setup import set_log_file, configure_logging, get_logger, ensure_utf8_console
 from forge import assembler as forge_assembler
@@ -723,7 +724,10 @@ def api_history():
 
 
 def _records_md_text(recs):
-    """历史档案导出为 Markdown（P0-8）：每条记录一个小节，便于直接归档。"""
+    """历史档案导出为 Markdown（P0-8）：每条记录一个小节，便于直接归档。
+
+    收藏记录若固定了「复现锚点」版本（B-15），附固定版本全文，保证归档后
+    不查库也能复现该版输出。"""
     parts = ["# 提示词工坊 · 历史档案导出\n",
              "导出时间：%s\n" % time.strftime("%Y-%m-%d %H:%M:%S")]
     for i, it in enumerate(recs, 1):
@@ -737,6 +741,13 @@ def _records_md_text(recs):
         parts.append("\n**输入**\n\n```text\n%s\n```\n" % (it.get("input", "") or ""))
         if it.get("output"):
             parts.append("\n**输出**\n\n```text\n%s\n```\n" % it["output"])
+        if it.get("favorite") and it.get("favorite_version_id"):
+            v = verchain.get_version(it["id"], it["favorite_version_id"])
+            if v:
+                parts.append("\n**复现锚点**：收藏固定版本 v%d%s\n\n```text\n%s\n```\n" % (
+                    v["version_no"],
+                    ("（" + v["commit_message"] + "）") if v.get("commit_message") else "",
+                    v["content"]))
     return "".join(parts)
 
 
@@ -759,16 +770,31 @@ def api_history_export():
 @app.post("/api/history/<int:rid>/favorite")
 @auth_required
 def api_history_favorite(rid):
-    """切换历史记录收藏状态（P1-1）。记录不属于当前工作区 → 404（用户隔离）。"""
+    """切换历史记录收藏状态（P1-1），可携带 version_id 固定「复现锚点」（B-15）。
+
+    请求体可选 {"version_id": N}：
+      - 携带 version_id → 确保收藏并把锚点固定为该版本（已收藏时改绑，幂等）；
+      - 不携带 → 经典切换（未收藏→收藏；已收藏→取消收藏并清空锚点）；
+      - version_id 不存在或不属于该记录 → 400，状态不变。
+    记录不属于当前工作区 → 404（用户隔离）。"""
     rec = db.get_record(rid)
     if rec is None:
         return jsonify({"error": "历史记录不存在"}), 404
+    body = request.get_json(silent=True) or {}
+    version_id = body.get("version_id")
+    if version_id is not None and not isinstance(version_id, int):
+        return jsonify({"error": "version_id 须为整数版本 id"}), 400
+    bind = version_id is not None     # 显式携带 version_id = 固定/改绑，不带 = 经典切换
     try:
-        new_state = db.toggle_favorite(rid)
+        result = db.favorite_record(rid, version_id=version_id, bind=bind)
+    except db.FavoriteVersionError as e:
+        return jsonify({"error": str(e)}), 400
     except Exception as e:  # 收藏非关键路径：异常上抛但转 500 + 日志，便于审计
         logger.exception("切换收藏失败 (rid=%s): %s", rid, e)
         return jsonify({"error": "收藏切换失败，请稍后重试"}), 500
-    return jsonify({"ok": True, "record_id": rid, "favorite": new_state})
+    new_state, bound = result
+    return jsonify({"ok": True, "record_id": rid, "favorite": new_state,
+                    "favorite_version_id": bound})
 
 
 @app.post("/api/history/clear")
@@ -845,6 +871,7 @@ def api_versions(rid):
         return jsonify({"error": "历史记录不存在"}), 404
     return jsonify({"record_id": rid,
                     "current_version_id": rec.get("current_version_id"),
+                    "favorite_version_id": rec.get("favorite_version_id"),
                     "versions": verchain.list_versions(rid)})
 
 
@@ -1330,6 +1357,25 @@ def api_admin_export(username):
 def api_admin_stats():
     """全站聚合: 账号数 / 增强记录 / 今日 / token / 失败 (管理员概览卡用)。"""
     return jsonify({"ok": True, "stats": users.global_stats()})
+
+
+# =====================================================================
+# 管理员：LLM 响应缓存运维面（第六轮，借鉴 promptfoo/pezzo 的缓存可观测实践）
+# =====================================================================
+@app.get("/api/admin/cache")
+@admin_required
+def api_admin_cache():
+    """缓存只读统计：条目数 / 累计命中 / 占用字节（不回显任何缓存内容与键）。"""
+    return jsonify({"ok": True, "stats": llm_cache.stats()})
+
+
+@app.post("/api/admin/cache/prune")
+@admin_required
+def api_admin_cache_prune():
+    """防无限增长：清理超龄（>30 天）与超量（>2000 条）缓存条目，返回删除数。"""
+    removed = llm_cache.prune()
+    logger.info("管理员 %s 执行缓存清理，删除 %d 条", session["u"], removed)
+    return jsonify({"ok": True, "removed": removed, "stats": llm_cache.stats()})
 
 
 @app.get("/api/admin/register-toggle")

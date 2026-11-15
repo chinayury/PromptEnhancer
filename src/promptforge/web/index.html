@@ -643,6 +643,15 @@ pre.output{background:var(--paper);border:1px solid var(--line);border-left:3px 
       </div>
 
       <div class="card">
+        <h3>LLM 响应缓存 <span class="hint">全站工作区聚合 · 只读统计，不展示任何缓存内容与键</span></h3>
+        <div class="stats" id="adm-cache-summary" style="margin-top:10px">加载中…</div>
+        <div class="bar" style="margin-top:10px">
+          <button class="btn ghost sm" id="adm-cache-prune">清理过期缓存（&gt;30 天或超 2000 条）</button>
+          <span class="hint" id="adm-cache-note"></span>
+        </div>
+      </div>
+
+      <div class="card">
         <h3>账号管理 <span class="hint">重置密码 / 启停 / 改角色 / 解锁 / 代管数据 / 导出 / 删除</span></h3>
         <div class="bar">
           <button class="btn" id="btn-admin-create"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>新建用户</button>
@@ -720,10 +729,12 @@ pre.output{background:var(--paper);border:1px solid var(--line);border-left:3px 
 <div class="modal-mask" id="ab-modal">
   <div class="modal" style="width:960px;max-height:92vh;overflow-y:auto">
     <h3><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--cobalt)" stroke-width="1.7" stroke-linecap="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1"/><rect x="13.5" y="3.5" width="7" height="7" rx="1"/><rect x="3.5" y="13.5" width="7" height="7" rx="1"/><rect x="13.5" y="13.5" width="7" height="7" rx="1"/></svg>双版对比 · 同一句话，两种淬法</h3>
-    <p class="hint">用两种增强风格各生成一版，逐字对比后由你点选采纳；两次调用都会照常记入打磨档案。</p>
+    <p class="hint">每版可独立选择厂商预设与增强风格，逐字对比后点选采纳；两次调用都会照常记入打磨档案。跨厂商对比复用当前保存的 API Key 与所选厂商预设（与 CLI --provider 同语义），鉴权失败会在对应列提示。</p>
     <div style="display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap">
-      <label class="hint">A 版风格<select id="ab-style-a" style="width:140px;margin-left:6px"></select></label>
-      <label class="hint">B 版风格<select id="ab-style-b" style="width:140px;margin-left:6px"></select></label>
+      <label class="hint">A 版厂商<select id="ab-prov-a" style="width:150px;margin-left:6px"></select></label>
+      <label class="hint">A 版风格<select id="ab-style-a" style="width:130px;margin-left:6px"></select></label>
+      <label class="hint">B 版厂商<select id="ab-prov-b" style="width:150px;margin-left:6px"></select></label>
+      <label class="hint">B 版风格<select id="ab-style-b" style="width:130px;margin-left:6px"></select></label>
       <button class="btn" id="ab-run" style="margin-left:auto">生成两版</button>
     </div>
     <div id="ab-verdict" style="margin-top:12px"></div>
@@ -884,6 +895,13 @@ async function loadConfig(){
     const sel = $(id); if(!sel) return;
     sel.innerHTML = "";
     Object.entries(d.styles).forEach(([label,key])=>{ const o=document.createElement("option"); o.value=key; o.textContent=label; sel.appendChild(o); });
+  });
+  // 双版对比厂商下拉（B-16 跨厂商对比）：首项「当前配置」= 不传 provider，保持原行为
+  ["ab-prov-a","ab-prov-b"].forEach(id=>{
+    const sel = $(id); if(!sel) return;
+    sel.innerHTML = "";
+    const o = document.createElement("option"); o.value = ""; o.textContent = "当前配置"; sel.appendChild(o);
+    Object.keys(d.providers).forEach(p=>{ const x=document.createElement("option"); x.value=p; x.textContent=p; sel.appendChild(x); });
   });
   if($("ab-style-a")) $("ab-style-a").value = "balanced";
   if($("ab-style-b")) $("ab-style-b").value = "technical";
@@ -1118,17 +1136,20 @@ $("ab-run").addEventListener("click", async ()=>{
   $("ab-a-meta").textContent = ""; $("ab-b-meta").textContent = "";
   renderAbVerdict(null);
   const styleA = $("ab-style-a").value, styleB = $("ab-style-b").value;
-  const call = style => api("/api/enhance", {method:"POST", body: JSON.stringify({text, style})}).catch(e=>({error:e.message}));
+  const provA = $("ab-prov-a") ? $("ab-prov-a").value : "";
+  const provB = $("ab-prov-b") ? $("ab-prov-b").value : "";
+  const call = (style, provider) => api("/api/enhance", {method:"POST",
+    body: JSON.stringify(provider ? {text, style, provider} : {text, style})}).catch(e=>({error:e.message}));
   try{
-    const [ra, rb] = await Promise.all([call(styleA), call(styleB)]);
+    const [ra, rb] = await Promise.all([call(styleA, provA), call(styleB, provB)]);
     abState.a = ra; abState.b = rb;
-    const fmtMeta = r => r.error ? "失败：" + r.error : (" · " + (r.output||"").length + " 字 · " + (r.prompt_tokens||0) + "+" + (r.completion_tokens||0) + " tk · " + (r.duration_ms||0) + "ms" + (r.cached ? " · 缓存命中" : ""));
+    const fmtMeta = (r, provider) => r.error ? "失败：" + r.error : ((provider ? provider + " · " : "") + (r.output||"").length + " 字 · " + (r.prompt_tokens||0) + "+" + (r.completion_tokens||0) + " tk · " + (r.duration_ms||0) + "ms" + (r.cached ? " · 缓存命中" : ""));
     if(ra.error){ $("ab-a-out").value = "（" + ra.error + "）"; } else { $("ab-a-out").value = ra.output || ""; }
     if(rb.error){ $("ab-b-out").value = "（" + rb.error + "）"; } else { $("ab-b-out").value = rb.output || ""; }
-    $("ab-a-meta").textContent = fmtMeta(ra);
-    $("ab-b-meta").textContent = fmtMeta(rb);
+    $("ab-a-meta").textContent = fmtMeta(ra, provA);
+    $("ab-b-meta").textContent = fmtMeta(rb, provB);
     renderAbVerdict(abVerdict(ra, rb));
-    setStatus(ra.error || rb.error ? "有一版生成失败，可重试或更换风格" : "两版已生成，请选择采纳");
+    setStatus(ra.error || rb.error ? "有一版生成失败，可重试或更换厂商/风格" : "两版已生成，请选择采纳");
   } finally { btn.disabled = false; btn.textContent = "生成两版"; }
 });
 function adoptAb(which){
@@ -1233,12 +1254,13 @@ async function refreshHistory(){
       const preview = ((it.input || "").slice(0,64)).replace(/\n/g," ");
       const lowQ = it.quality === "low_quality" ? ' <span class="tag tag-warn">低质量</span>' : "";
       const ver = it.current_version_id ? ' <span class="tag-src enhance">版本链</span>' : "";
+      const favVer = (it.favorite && it.favorite_version_id) ? ' <span class="tag-src enhance" title="收藏的复现锚点版本">★固定</span>' : "";
       row.innerHTML =
         '<button class="fav' + (it.favorite ? " on" : "") + '" title="' + (it.favorite ? "取消收藏" : "收藏这条") + '">' +
           '<svg width="17" height="17" viewBox="0 0 24 24" fill="' + (it.favorite ? "currentColor" : "none") + '" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l2.7 5.6 6.1.7-4.6 4.1 1.3 6-5.5-3.1L6.6 19.4l1.3-6-4.6-4.1 6.1-.7z"/></svg>' +
         '</button>' +
         '<div class="info"><div class="meta"><span class="obs ' + (ok?"ok":"err") + '"></span>' +
-        esc(it.time||"") + " · " + esc(it.provider||"") + " · " + esc(it.style||"—") + lowQ + ver +
+        esc(it.time||"") + " · " + esc(it.provider||"") + " · " + esc(it.style||"—") + lowQ + ver + favVer +
         '</div><div class="preview">' + esc(preview) + "</div></div>";
       const favBtn = row.querySelector(".fav");
       favBtn.addEventListener("click", async ()=>{
@@ -1314,6 +1336,7 @@ $("hist-filter").addEventListener("change", refreshHistory);
 /* ---------------- 版本链（F2）---------------- */
 let _verRecord = null;
 let _verCache = [];
+let _verFavVerId = null;    // 收藏复现锚点版本 id（B-15，loadVersions 时刷新）
 let _lastDiffUnified = "";   // 最近一次 diff 的统一文本（供复制为 Markdown）
 
 function srcLabel(s){
@@ -1366,6 +1389,7 @@ async function loadVersions(){
   try{
     const d = await api("/api/history/" + _verRecord.id + "/versions");
     _verCache = d.versions || [];
+    _verFavVerId = d.favorite_version_id || null;
     renderScoreChart(_verCache);
     renderVerList();
     renderVerSelectors();
@@ -1384,11 +1408,14 @@ function renderVerList(){
       '<span class="vno">v' + v.version_no + "</span>" +
       '<span class="tag-src' + (v.source==="enhance" ? " enhance" : "") + '">' + srcLabel(v.source) + "</span>" +
       (v.is_current ? '<span class="tag-cur">当前</span>' : "") +
+      (v.id === _verFavVerId ? '<span class="tag-cur" title="收藏的复现锚点版本">★ 收藏版</span>' : "") +
       '<span class="vmsg" title="' + esc(v.commit_message) + '">' + esc(v.commit_message) + "</span>" +
       (v.model ? '<span class="vmeta">· ' + esc(v.model) + "</span>" : "") +
       '<span class="vmeta">· ' + esc(v.created_by||"—") + " · " + esc(v.created_at||"") + "</span>" +
       score +
       '<span style="display:flex;gap:6px;margin-left:auto">' +
+      '<button class="btn sm ghost" data-favver="' + v.id + '" title="收藏这条记录并把复现输出固定为该版本">' +
+        (v.id === _verFavVerId ? "★ 已固定" : "固定此版") + "</button>" +
       (v.is_current ? "" : '<button class="btn sm ghost" data-rollback="' + v.id + '">回滚到此版</button>') +
       "</span></div>";
   }).join("");
@@ -1405,6 +1432,27 @@ function renderVerList(){
             toast("已回滚", "ok");
             loadVersions(); refreshHistory();
           }catch(e){ setStatus("回滚失败: " + e.message); }
+        });
+    });
+  });
+  box.querySelectorAll("[data-favver]").forEach(b=>{
+    b.addEventListener("click", ()=>{
+      const vid = parseInt(b.dataset.favver);
+      const v = _verCache.find(x=>x.id === vid);
+      const unpin = vid === _verFavVerId;    // 再点已固定版本 = 取消收藏
+      confirmModal(unpin ? "取消收藏" : "收藏并固定此版",
+        unpin ? "取消收藏后，复现锚点一并清除？"
+              : "收藏这条记录，并把 v" + (v ? v.version_no : vid) + " 固定为复现输出版本？\n收藏记录与固定版本可随时在版本链里更换或取消。",
+        async ()=>{
+          try{
+            const d = await api("/api/history/" + _verRecord.id + "/favorite", {method:"POST",
+              body: JSON.stringify(unpin ? {} : {version_id: vid})});
+            _verFavVerId = d.favorite_version_id || null;
+            setStatus(d.favorite ? ("已收藏，复现输出固定为 v" + (v ? v.version_no : vid))
+                                 : "已取消收藏（锚点已清除）");
+            toast(d.favorite ? "已收藏并固定" : "已取消收藏", "ok");
+            loadVersions(); refreshHistory();
+          }catch(e){ setStatus("收藏失败: " + e.message); toast("收藏失败：" + e.message, "err"); }
         });
     });
   });
@@ -1722,6 +1770,7 @@ async function loadAdminAll(){
   loadDefaultCfg();
   loadRegToggle();
   loadAdminUsage();
+  loadAdminCache();
 }
 async function loadAdminUsage(){
   try{
@@ -1776,6 +1825,28 @@ async function loadRegToggle(){
     }catch(e){ el.checked = !el.checked; setStatus("切换失败: " + e.message); }
   });
 })();
+async function loadAdminCache(){
+  try{
+    const d = await api("/api/admin/cache");
+    const s = d.stats || {};
+    $("adm-cache-summary").innerHTML =
+      '<span>条目 <b>' + fmtNum(s.entries) + '</b></span>' +
+      '<span>累计命中 <b>' + fmtNum(s.hits) + '</b></span>' +
+      '<span>占用 <b>' + fmtSize(s.bytes) + '</b></span>';
+  }catch(e){ $("adm-cache-summary").textContent = "加载失败"; }
+}
+$("adm-cache-prune").addEventListener("click", ()=>{
+  confirmModal("清理过期缓存",
+    "删除超过 30 天或总量超出 2000 条的最旧缓存条目？\n缓存纯属加速，清理后相同请求会重新调用上游模型。",
+    async ()=>{
+      try{
+        const d = await api("/api/admin/cache/prune", {method:"POST"});
+        $("adm-cache-note").textContent = "已清理 " + d.removed + " 条";
+        toast("缓存已清理（" + d.removed + " 条）", "ok");
+        loadAdminCache();
+      }catch(e){ $("adm-cache-note").textContent = "清理失败：" + e.message; }
+    });
+});
 async function loadAdmStats(){
   try{
     const d = await api("/api/admin/stats");

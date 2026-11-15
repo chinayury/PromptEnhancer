@@ -350,6 +350,11 @@ def ensure_version_schema():
             # 增强模式留痕（2026-11-14 第五轮）：user/system 双模式，旧库无感默认 user
             if not _column_exists(conn.cursor(), "enhance_records", "enh_mode"):
                 conn.execute("ALTER TABLE enhance_records ADD COLUMN enh_mode TEXT")
+            # 收藏复现锚点（2026-11-15 第六轮，借鉴 prompt-optimizer Smart Favorites）：
+            # favorite_version_id 指向该记录 prompt_versions 的某一版，复现输入直接用
+            # 不可变的 input_text（记录行不可编辑，无需另存快照）。旧库无感为 NULL。
+            if not _column_exists(conn.cursor(), "enhance_records", "favorite_version_id"):
+                conn.execute("ALTER TABLE enhance_records ADD COLUMN favorite_version_id INTEGER")
             conn.commit()
         finally:
             conn.close()
@@ -542,12 +547,13 @@ def _record_dicts(rows):
         "current_version_id": r[13],
         "favorite": bool(r[14] or 0),
         "mode": r[15] or "user",
+        "favorite_version_id": r[16],
     } for r in rows]
 
 
 _RECORD_COLS = ("id, created_at, provider, model, input_text, output_text, status, "
                 "duration_ms, quality, style, prompt_tokens, completion_tokens, "
-                "request_id, current_version_id, favorite, enh_mode")
+                "request_id, current_version_id, favorite, enh_mode, favorite_version_id")
 
 
 def get_record(record_id):
@@ -598,6 +604,47 @@ def toggle_favorite(record_id):
         conn.execute("UPDATE enhance_records SET favorite=? WHERE id=?", (new, record_id))
         conn.commit()
         return bool(new)
+    finally:
+        conn.close()
+
+
+class FavoriteVersionError(ValueError):
+    """收藏绑定的版本不存在或不属于该记录（调用方转 400）。"""
+
+
+def favorite_record(record_id, version_id=None, bind=False):
+    """收藏/取消收藏并维护「复现锚点」（B-15，借鉴 prompt-optimizer Smart Favorites）。
+
+    语义（bind=False 时与旧 toggle_favorite 兼容）：
+      - bind=False（经典切换）：未收藏 → 收藏；已收藏 → 取消收藏并清空锚点；
+      - bind=True（显式绑定，请求体携带 version_id 时）：确保收藏并把锚点绑定为
+        version_id——已收藏时改绑到新版本，语义为「固定此版」，绝不取消收藏；
+      - version_id 不存在或不属于该记录 → 抛 FavoriteVersionError（状态不变）。
+    返回 (favorite_bool, favorite_version_id)；记录不存在返回 None。"""
+    ensure_version_schema()
+    conn = _conn()
+    try:
+        row = conn.execute("SELECT favorite FROM enhance_records WHERE id=?",
+                           (record_id,)).fetchone()
+        if row is None:
+            return None
+        if version_id is not None:
+            ok = conn.execute(
+                "SELECT 1 FROM prompt_versions WHERE id=? AND record_id=?",
+                (version_id, record_id)).fetchone()
+            if ok is None:
+                raise FavoriteVersionError("版本不存在或不属于该记录")
+        if bind and version_id is not None:
+            conn.execute(
+                "UPDATE enhance_records SET favorite=1, favorite_version_id=? WHERE id=?",
+                (version_id, record_id))
+            conn.commit()
+            return True, version_id
+        new = 0 if int(row[0] or 0) else 1
+        conn.execute("UPDATE enhance_records SET favorite=?, favorite_version_id=NULL WHERE id=?",
+                     (new, record_id))
+        conn.commit()
+        return bool(new), None
     finally:
         conn.close()
 
