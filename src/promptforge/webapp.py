@@ -797,6 +797,22 @@ def api_history_favorite(rid):
                     "favorite_version_id": bound})
 
 
+@app.delete("/api/history/<int:rid>")
+@auth_required
+def api_history_delete(rid):
+    """删除单条历史记录（第七轮，后续规划 7）。
+
+    版本链随外键级联删除（prompt_versions ON DELETE CASCADE）；version_audit
+    审计行保留（审计记录的是历史操作，删除记录本身不抹除既往痕迹）；
+    全文检索由 AFTER DELETE 触发器同步。仅限本人工作区（404 用户隔离）。"""
+    rec = db.get_record(rid)
+    if rec is None:
+        return jsonify({"error": "历史记录不存在"}), 404
+    deleted = db.delete_record(rid)
+    logger.info("用户 %s 删除历史记录 %d（deleted=%s）", session["u"], rid, deleted)
+    return jsonify({"ok": True, "record_id": rid, "deleted": bool(deleted)})
+
+
 @app.post("/api/history/clear")
 @auth_required
 def api_history_clear():
@@ -907,16 +923,28 @@ def api_activate_version(rid, vid):
     return jsonify(result)
 
 
+def _diff_flags():
+    """解析 diff 粒度开关（B-11）：?ignore_ws=1 / ?ignore_case=1（缺省关闭）。"""
+    def _on(name):
+        return (request.args.get(name) or "").strip() in ("1", "true", "yes")
+    return _on("ignore_case"), _on("ignore_ws")
+
+
 @app.get("/api/history/<int:rid>/diff")
 @auth_required
 def api_version_diff(rid):
-    """两版本结构化并排 diff（difflib）。left==right → {identical:true}。"""
+    """两版本结构化并排 diff（difflib）。left==right → {identical:true}。
+
+    可选粒度开关（B-11）：?ignore_ws=1 忽略空白差异、?ignore_case=1 忽略
+    大小写差异——仅作用于内容行匹配与行内高亮；槽值与 unified 保持严格。"""
     rec = db.get_record(rid)
     if rec is None:
         return jsonify({"error": "历史记录不存在"}), 404
+    ignore_case, ignore_ws = _diff_flags()
     try:
         data = verchain.diff_versions(rid, request.args.get("left"),
-                                      request.args.get("right"))
+                                      request.args.get("right"),
+                                      ignore_case=ignore_case, ignore_ws=ignore_ws)
     except verchain.VersionError as e:
         return jsonify({"error": str(e)}), e.status
     return jsonify(data)
@@ -1308,8 +1336,10 @@ def api_admin_version_diff(username, rid):
         if rec is None:
             return jsonify({"error": "历史记录不存在"}), 404
         try:
+            ignore_case, ignore_ws = _diff_flags()
             data = verchain.diff_versions(rid, request.args.get("left"),
-                                          request.args.get("right"))
+                                          request.args.get("right"),
+                                          ignore_case=ignore_case, ignore_ws=ignore_ws)
         except verchain.VersionError as e:
             return jsonify({"error": str(e)}), e.status
     return jsonify(data)

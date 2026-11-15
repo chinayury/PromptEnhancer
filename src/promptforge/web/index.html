@@ -767,6 +767,8 @@ pre.output{background:var(--paper);border:1px solid var(--line);border-left:3px 
       <select id="ver-left" style="width:180px"></select>
       <span class="hint">→</span>
       <select id="ver-right" style="width:180px"></select>
+      <label class="hint" style="display:flex;align-items:center;gap:4px;cursor:pointer" title="空白差异（空格数/行尾空白）不计入差异"><input type="checkbox" id="ver-ig-ws" style="width:auto;margin:0">忽略空白</label>
+      <label class="hint" style="display:flex;align-items:center;gap:4px;cursor:pointer" title="大小写差异不计入差异"><input type="checkbox" id="ver-ig-case" style="width:auto;margin:0">忽略大小写</label>
       <button class="btn ghost sm" id="ver-cmp">对比</button>
       <button class="btn ghost sm" id="ver-copy-md" title="把对比结果复制为 Markdown 代码块">复制 Markdown</button>
       <span class="hint" id="ver-cmp-note"></span>
@@ -1290,6 +1292,19 @@ async function refreshHistory(){
       acts.appendChild(mkBtn("评估", ()=>{
         evaluateRecord(it.id);
       }, "ghost"));
+      acts.appendChild(mkBtn("删除", ()=>{
+        confirmModal("删除这条记录",
+          "删除后该记录的版本链一并删除（审计留痕保留），不可恢复。确定删除？",
+          async ()=>{
+            try{
+              await api("/api/history/" + it.id, {method:"DELETE"});
+              setStatus("已删除记录 #" + it.id);
+              toast("已删除", "ok");
+              refreshHistory();
+              loadRecentChips();
+            }catch(e){ toast("删除失败：" + e.message, "err"); }
+          });
+      }, "danger"));
       row.appendChild(acts);
       list.appendChild(row);
     });
@@ -1471,8 +1486,10 @@ function renderVerSelectors(){
 $("ver-cmp").addEventListener("click", async ()=>{
   if(!_verCache.length){ setStatus("没有可对比的版本"); return; }
   const l = parseInt($("ver-left").value), r = parseInt($("ver-right").value);
+  const flags = ($("ver-ig-ws") && $("ver-ig-ws").checked ? "&ignore_ws=1" : "") +
+                ($("ver-ig-case") && $("ver-ig-case").checked ? "&ignore_case=1" : "");
   try{
-    const d = await api("/api/history/" + _verRecord.id + "/diff?left=" + l + "&right=" + r);
+    const d = await api("/api/history/" + _verRecord.id + "/diff?left=" + l + "&right=" + r + flags);
     renderDiff(d);
   }catch(e){ setStatus("对比失败: " + e.message); }
 });
@@ -1829,9 +1846,11 @@ async function loadAdminCache(){
   try{
     const d = await api("/api/admin/cache");
     const s = d.stats || {};
+    const rate = (s.hit_rate == null) ? "—" : Math.round(s.hit_rate * 100) + "%";
     $("adm-cache-summary").innerHTML =
       '<span>条目 <b>' + fmtNum(s.entries) + '</b></span>' +
-      '<span>累计命中 <b>' + fmtNum(s.hits) + '</b></span>' +
+      '<span>累计命中 <b>' + fmtNum(s.hits) + '</b> / 未命中 <b>' + fmtNum(s.misses || 0) + '</b></span>' +
+      '<span>命中率 <b>' + rate + '</b></span>' +
       '<span>占用 <b>' + fmtSize(s.bytes) + '</b></span>';
   }catch(e){ $("adm-cache-summary").textContent = "加载失败"; }
 }

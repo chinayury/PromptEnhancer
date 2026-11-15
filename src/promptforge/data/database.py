@@ -611,7 +611,6 @@ def toggle_favorite(record_id):
 class FavoriteVersionError(ValueError):
     """收藏绑定的版本不存在或不属于该记录（调用方转 400）。"""
 
-
 def favorite_record(record_id, version_id=None, bind=False):
     """收藏/取消收藏并维护「复现锚点」（B-15，借鉴 prompt-optimizer Smart Favorites）。
 
@@ -859,6 +858,25 @@ def clear_records():
     conn.close()
     logger.info("已清空 %d 条增强记录（配置保留）", n)
     return n
+
+
+def delete_record(record_id):
+    """删除单条历史记录（第七轮，后续规划 7）。
+
+    - prompt_versions 随外键 ON DELETE CASCADE 级联删除；
+    - version_audit 审计行刻意保留（审计记录的是历史操作，不随记录抹除）；
+    - FTS 索引由 hist_fts_ad AFTER DELETE 触发器自动同步；
+    - current_version_id / favorite_version_id 随行删除，无悬挂指针
+      （repair_consistency 只扫存活记录，删除后不会出现在扫描里）。
+    返回是否实际删除（False = 记录不存在）。"""
+    ensure_version_schema()
+    conn = _conn()
+    try:
+        n = conn.execute("DELETE FROM enhance_records WHERE id=?", (record_id,)).rowcount
+        conn.commit()
+        return bool(n)
+    finally:
+        conn.close()
 
 
 def log_clear(backup_path, removed, reason=""):

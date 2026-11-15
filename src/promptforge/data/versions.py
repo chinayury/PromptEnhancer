@@ -274,12 +274,53 @@ def set_version_score(record_id, version_id, score, actor=""):
 # =====================================================================
 # diff（stdlib difflib）
 # =====================================================================
-def side_by_side(old, new):
+def _norm_with_map(text, ignore_case=False, ignore_ws=False):
+    """diff 规范化（B-11，借鉴 promptfoo 断言比较的 ignore-case/
+    ignore-whitespace 惯例）：返回 (规范化串, 索引映射)。
+
+      - ignore_case：逐字符 lower（极少数展开成多字符的映射按原字符保留）；
+      - ignore_ws：连续空白段（含制表/行尾空白）折叠为单个空格——空白「数量」
+        不构成差异；
+      - idx_map[k] = 规范化串第 k 个字符在原文中的下标，用于把规范化序列上
+        算出的 opcodes 对齐回原文渲染（原文一字不改）。
+    不开开关时返回 (原文, 恒等映射)。"""
+    if not ignore_case and not ignore_ws:
+        return text or "", list(range(len(text or "")))
+    out, idx, prev_ws = [], [], False
+    for i, ch in enumerate(text or ""):
+        c = ch.lower() if ignore_case else ch
+        if len(c) != 1:                # 大小写映射展开成多字符的罕见情况 → 保原字符
+            c = ch
+        ws = ch.isspace()
+        if ignore_ws and ws:
+            if prev_ws:                # 折叠连续空白段
+                continue
+            c = " "
+        out.append(c)
+        idx.append(i)
+        prev_ws = ws if ignore_ws else False
+    return "".join(out), idx
+
+
+def _norm_key(text, ignore_case=False, ignore_ws=False):
+    """行/条目级比较键（side_by_side 行匹配用；长度无约束）。"""
+    return _norm_with_map(text, ignore_case, ignore_ws)[0]
+
+
+def side_by_side(old, new, ignore_case=False, ignore_ws=False):
     """difflib.ndiff 输出解析为并排行对模型：
     added → {left:None, right:{text,type:'added'}}；removed → 左有右无；
     unchanged → 双侧同文；'? ' 指导行丢弃；空行以单空格占位保证双栏对齐。
-    ndiff 保证删除块先于对应新增块出现，缓冲区逐位配对即得并排。"""
+    ndiff 保证删除块先于对应新增块出现，缓冲区逐位配对即得并排。
+
+    ignore_case / ignore_ws（B-11）：行匹配用规范化行序列，渲染仍取各自
+    原文行（ndiff 输出按序消费输入行，逐位回映即可）。unified/复制 Markdown
+    保持严格原文 diff，不受开关影响。"""
     rows, buf_del, buf_add = [], [], []
+    old_lines = (old or "").splitlines()
+    new_lines = (new or "").splitlines()
+    old_keys = [_norm_key(l, ignore_case, ignore_ws) for l in old_lines]
+    new_keys = [_norm_key(l, ignore_case, ignore_ws) for l in new_lines]
 
     def flush():
         while buf_del or buf_add:
@@ -287,34 +328,45 @@ def side_by_side(old, new):
             r = buf_add.pop(0) if buf_add else None
             rows.append({"left": l, "right": r})
 
-    for line in difflib.ndiff((old or "").splitlines(), (new or "").splitlines()):
-        tag, text = line[:2], line[2:]
+    oi = ni = 0
+    for line in difflib.ndiff(old_keys, new_keys):
+        tag = line[:2]
         if tag == "- ":
-            buf_del.append({"text": text or " ", "type": "removed"})
+            buf_del.append({"text": old_lines[oi] or " ", "type": "removed"}); oi += 1
         elif tag == "+ ":
-            buf_add.append({"text": text or " ", "type": "added"})
+            buf_add.append({"text": new_lines[ni] or " ", "type": "added"}); ni += 1
         elif tag == "  ":
             flush()
-            rows.append({"left": {"text": text or " ", "type": "unchanged"},
-                         "right": {"text": text or " ", "type": "unchanged"}})
-        # '? ' 行内指导标记：丢弃
+            rows.append({"left": {"text": old_lines[oi] or " ", "type": "unchanged"},
+                         "right": {"text": new_lines[ni] or " ", "type": "unchanged"}})
+            oi += 1; ni += 1
+        # '? ' 行内指导标记：丢弃（不消费任何原文行）
     flush()
     return rows
 
 
 def unified_diff_text(old, new, fromdesc="", todesc=""):
-    """统一格式 diff 文本（导出/复制场景）。"""
+    """统一格式 diff 文本（导出/复制场景；严格原文，不受粒度开关影响）。"""
     return "\n".join(difflib.unified_diff(
         (old or "").splitlines(), (new or "").splitlines(),
         fromfile=fromdesc or "left", tofile=todesc or "right", lineterm=""))
 
 
-def char_opcodes(left, right):
+def char_opcodes(left, right, ignore_case=False, ignore_ws=False):
     """同一改动行的左右文本做字符级差异（stdlib 无词级 diff，用 opcodes 等价），
-    供前端在 added/removed 底色上再做行内高亮。"""
-    sm = difflib.SequenceMatcher(None, left or "", right or "")
-    return [{"tag": t, "left": left[i1:i2], "right": right[j1:j2]}
-            for t, i1, i2, j1, j2 in sm.get_opcodes()]
+    供前端在 added/removed 底色上再做行内高亮。
+
+    ignore_case / ignore_ws（B-11）：在规范化序列（含空白折叠）上计算
+    opcodes，再经索引映射切回原文渲染——原文片段一字不改，仅匹配口径放宽。"""
+    lo, ro = left or "", right or ""
+    na, ma = _norm_with_map(lo, ignore_case, ignore_ws)
+    nb, mb = _norm_with_map(ro, ignore_case, ignore_ws)
+    out = []
+    for t, i1, i2, j1, j2 in difflib.SequenceMatcher(None, na, nb).get_opcodes():
+        lseg = lo[ma[i1]: ma[i2 - 1] + 1] if i2 > i1 else ""
+        rseg = ro[mb[j1]: mb[j2 - 1] + 1] if j2 > j1 else ""
+        out.append({"tag": t, "left": lseg, "right": rseg})
+    return out
 
 
 def slot_diff(old_slots, new_slots):
@@ -337,10 +389,13 @@ def slot_diff(old_slots, new_slots):
     return out
 
 
-def diff_versions(record_id, left_id, right_id):
+def diff_versions(record_id, left_id, right_id, ignore_case=False, ignore_ws=False):
     """两版本结构化对比。left==right → {identical: true}；版本不存在或不属于
     该记录 → 404。返回：行对 rows（改动行内附字符级 opcodes）、槽值段
-    （规范化 JSON 并排 + 逐槽统计）、统一 diff 文本。"""
+    （规范化 JSON 并排 + 逐槽统计）、统一 diff 文本。
+
+    ignore_case / ignore_ws（B-11）：仅作用于内容行匹配与行内高亮；
+    identical 判定、槽值对比与 unified 文本保持严格原文。"""
     ensure_ready()
     try:
         left_id, right_id = int(left_id), int(right_id)
@@ -353,13 +408,15 @@ def diff_versions(record_id, left_id, right_id):
     if left is None or right is None:
         raise VersionError("版本不存在或不属于该提示词", 404)
 
-    rows = side_by_side(left["content"], right["content"])
+    rows = side_by_side(left["content"], right["content"],
+                        ignore_case=ignore_case, ignore_ws=ignore_ws)
     # 行内字符级高亮：仅对左右同有且不同、且长度受控的行附加 opcodes（控 payload）
     for row in rows:
         l, r = row["left"], row["right"]
         if (l and r and l["text"] != r["text"]
                 and len(l["text"]) <= 2000 and len(r["text"]) <= 2000):
-            row["opcodes"] = char_opcodes(l["text"], r["text"])
+            row["opcodes"] = char_opcodes(l["text"], r["text"],
+                                          ignore_case=ignore_case, ignore_ws=ignore_ws)
 
     def _meta(v):
         return {"id": v["id"], "version_no": v["version_no"], "source": v["source"],

@@ -50,6 +50,16 @@ CREATE TABLE IF NOT EXISTS llm_cache (
 )
 """
 
+# 全局观测计数（第七轮，后续规划 3）：hits/misses 计入 meta 表，清缓存/淘汰
+# 不重置——反映的是「这套部署自启用缓存以来」的累计行为，与按条目的 llm_cache.hits
+# （随条目整体替换与删除重置）语义不同，专供命中率观测。
+_META_DDL = """
+CREATE TABLE IF NOT EXISTS llm_cache_meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+)
+"""
+
 # make_key 归一化时需要剔除的「无关键」：这些字段不影响补全内容，
 # 若纳入键会导致本可复用的响应被当成不同请求而漏命中。
 _NON_CRITICAL_PARAMS = {"stream", "stream_options", "user", "metadata"}
@@ -77,10 +87,19 @@ def _cursor():
     try:
         cur = conn.cursor()
         cur.execute(_DDL)
+        cur.execute(_META_DDL)
         yield cur
         conn.commit()
     finally:
         conn.close()
+
+
+def _bump_meta(cur, name):
+    """meta 计数 +1（UPSERT；观测失败绝不影响缓存主流程——调用方吞异常）。"""
+    cur.execute(
+        "INSERT INTO llm_cache_meta (key, value) VALUES (?, '1') "
+        "ON CONFLICT(key) DO UPDATE SET value = CAST(CAST(value AS INTEGER) + 1 AS TEXT)",
+        (name,))
 
 
 def ensure_schema():
@@ -125,18 +144,35 @@ def _expired(created_at, ttl_seconds):
 
 
 def get(key):
-    """命中且未过期：hits+1 并返回 dict；未命中或已过期返回 None（过期条目顺手删）。"""
-    with _cursor() as cur:
-        row = cur.execute(
-            "SELECT response_json, created_at, ttl_seconds FROM llm_cache WHERE cache_key=?",
-            (key,)).fetchone()
-        if row is None:
-            return None
-        response_json, created_at, ttl_seconds = row
-        if _expired(created_at, ttl_seconds):
-            cur.execute("DELETE FROM llm_cache WHERE cache_key=?", (key,))
-            return None
-        cur.execute("UPDATE llm_cache SET hits=hits+1 WHERE cache_key=?", (key,))
+    """命中且未过期：hits+1 并返回 dict；未命中或已过期返回 None（过期条目顺手删）。
+
+    全局命中/未命中计入 llm_cache_meta（命中率观测，第七轮）；计数属纯观测，
+    异常只记 warning。底层 SQLite 异常按未命中处理（调用方本就把缓存读取
+    包在兜底 try 里，走上游调用），绝不向上抛。"""
+    response_json = None
+    hit = False
+    try:
+        with _cursor() as cur:
+            row = cur.execute(
+                "SELECT response_json, created_at, ttl_seconds FROM llm_cache WHERE cache_key=?",
+                (key,)).fetchone()
+            if row is None:
+                _bump_meta(cur, "misses")
+            else:
+                response_json, created_at, ttl_seconds = row
+                if _expired(created_at, ttl_seconds):
+                    cur.execute("DELETE FROM llm_cache WHERE cache_key=?", (key,))
+                    _bump_meta(cur, "misses")
+                    response_json = None
+                else:
+                    cur.execute("UPDATE llm_cache SET hits=hits+1 WHERE cache_key=?", (key,))
+                    _bump_meta(cur, "hits")
+                    hit = True
+    except sqlite3.Error as e:
+        logger.warning("缓存读取/观测失败（按未命中处理）: %s", e)
+        return None
+    if not hit or response_json is None:
+        return None
     try:
         return json.loads(response_json)
     except ValueError:
@@ -154,12 +190,24 @@ def put(key, response, ttl_seconds=0):
 
 
 def stats():
-    """返回 {"entries": n, "hits": n, "bytes": n}；bytes 为 response_json 总长度。"""
+    """返回 {"entries", "hits", "bytes", "misses", "hit_rate"}。
+
+    hits 为 meta 表的全局命中计数（清缓存/淘汰不重置）；hit_rate =
+    hits/(hits+misses)，无任何读取时为 None。bytes 为 response_json 总长度。"""
     with _cursor() as cur:
         row = cur.execute(
-            "SELECT COUNT(*), COALESCE(SUM(hits),0), COALESCE(SUM(LENGTH(response_json)),0) "
-            "FROM llm_cache").fetchone()
-    return {"entries": int(row[0] or 0), "hits": int(row[1] or 0), "bytes": int(row[2] or 0)}
+            "SELECT COUNT(*), COALESCE(SUM(LENGTH(response_json)),0) FROM llm_cache").fetchone()
+        meta = dict(cur.execute("SELECT key, value FROM llm_cache_meta").fetchall())
+    hits = int(meta.get("hits", "0") or 0)
+    misses = int(meta.get("misses", "0") or 0)
+    total = hits + misses
+    return {
+        "entries": int(row[0] or 0),
+        "hits": hits,
+        "misses": misses,
+        "hit_rate": round(hits / total, 4) if total else None,
+        "bytes": int(row[1] or 0),
+    }
 
 
 def clear():
