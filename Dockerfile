@@ -2,7 +2,7 @@
 # 提示词工坊 PromptForge · Docker Web 版（浏览器直接访问）
 # 注:不写 # syntax=docker/dockerfile:1 —— 该指令强制 BuildKit 联网拉前端镜像,
 # 隔离网络/代理失效环境(群晖 NAS 等)构建必败;内建前端足够。
-# 当前版本：v0.1.1（镜像 promptforge:v0.1.1）。
+# 当前版本：v0.1.2（镜像 promptforge:v0.1.2）。
 # ============================================================
 FROM python:3.11-slim
 
