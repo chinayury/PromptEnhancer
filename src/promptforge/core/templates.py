@@ -242,6 +242,25 @@ ITERATE_USER = """You are revising an enhanced prompt based on its evaluation re
 STYLE_LABEL_TO_KEY = {"均衡": "balanced", "更口语": "casual", "更技术": "technical", "更简洁": "concise"}
 STYLE_KEY_TO_LABEL = {v: k for k, v in STYLE_LABEL_TO_KEY.items()}
 
+# =====================================================================
+# 声明式行为修饰符（第九轮，借鉴 smkalami/prompt-decorators 的可组合修饰符
+# 规范，arXiv:2510.19850；落地仅取「声明式片段 + 白名单组合」思想，不引入
+# 其 +++ 语法解析面）。每条为一段追加到系统提示词末尾的约束文本，与增强风格、
+# 场景预设正交，可叠加组合；应用顺序 = 用户勾选顺序。缺省空列表 → 消息与
+# 历史行为逐字节一致。
+# =====================================================================
+MODIFIERS = {
+    "reasoning": "请先在内部拆解问题再给出最终答案：把推理步骤前置组织，让指令流程清晰可跟随。",
+    "step_by_step": "请把执行过程组织为编号的分步说明，每步一个可验证的动作。",
+    "self_check": "请在完成回答前自检：逐条核对是否满足全部约束与输出格式，修正后再输出。",
+    "cite_sources": "对涉及事实与外部信息的内容，请标注来源或明确说明为推断。",
+    "output_format": "请为结果定义明确的输出格式（结构、字段、顺序），并严格遵循。",
+    "edge_cases": "请显式覆盖边界条件与异常输入的处理方式。",
+}
+MODIFIER_LABEL_TO_KEY = {"推理前置": "reasoning", "分步说明": "step_by_step", "自检": "self_check",
+                         "标注来源": "cite_sources", "输出格式": "output_format", "边界覆盖": "edge_cases"}
+MODIFIER_KEY_TO_LABEL = {v: k for k, v in MODIFIER_LABEL_TO_KEY.items()}
+
 # 温度与最大长度的可选项（下拉框数据源，亦可作为参数校验白名单）。
 TEMP_OPTIONS = ["0.3", "0.5", "0.7", "0.9", "1.0"]
 MAXTOKEN_OPTIONS = ["512", "1024", "2048", "4096"]

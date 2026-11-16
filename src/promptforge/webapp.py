@@ -48,6 +48,7 @@ import os
 import io
 import csv
 import json
+import re
 import time
 import hmac
 import secrets
@@ -450,12 +451,28 @@ def api_get_config():
         "env_key_injected": bool(os.environ.get("PROMPTFORGE_API_KEY")),
         "providers": load_providers(),
         "styles": templates.STYLE_LABEL_TO_KEY,
+        "modifiers": templates.MODIFIER_LABEL_TO_KEY,
         "modes": templates.MODE_KEY_TO_LABEL,
         "temp_options": templates.TEMP_OPTIONS,
         "maxtoken_options": templates.MAXTOKEN_OPTIONS,
         "version": __version__,
         "auth_enabled": True,
     })
+
+
+def _validate_modifiers(raw):
+    """校验并去重行为修饰符列表（第九轮）；非法项抛 ValueError。"""
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise ValueError("行为修饰符须为列表")
+    out = []
+    for m in raw:
+        if m not in templates.MODIFIERS:
+            raise ValueError("行为修饰符非法：%s" % m)
+        if m not in out:
+            out.append(m)
+    return out
 
 
 def _validate_cfg(body):
@@ -474,6 +491,7 @@ def _validate_cfg(body):
         "max_tokens": str(body.get("max_tokens") or "1024").strip(),
         "style": style,
         "mode": mode,
+        "modifiers": _validate_modifiers(body.get("modifiers")),
     }
 
 
@@ -498,6 +516,8 @@ def _apply_request_overrides(cfg, body):
         if mode not in engine.MODE_WHITELIST:
             raise ValueError("增强模式非法（仅支持 user / system）")
         cfg["mode"] = mode
+    if "modifiers" in body:
+        cfg["modifiers"] = _validate_modifiers(body.get("modifiers"))
     provider = (body.get("provider") or "").strip()
     if provider:
         preset = load_providers().get(provider)
@@ -528,6 +548,19 @@ def api_save_config():
 # =====================================================================
 # 增强（单条 / 批量）
 # =====================================================================
+# 批量取消（第九轮，收口已知限制 6.1 第 1 条）：批处理循环仍是同步请求，
+# 取消靠「客户端生成 batch_id → 服务端登记 Event → 逐条之间检查」实现；
+# Event 随批量结束（含异常）必然清理，用户隔离由键前缀保证。
+_batch_cancel_lock = threading.Lock()
+_batch_cancel = {}          # "<user>:<batch_id>" -> threading.Event
+
+_BATCH_ID_RE = re.compile(r"[A-Za-z0-9_\-]{1,64}")
+
+
+def _batch_cancel_key(batch_id):
+    return "%s:%s" % (session["u"], batch_id)
+
+
 def _safe_int(v):
     """token 数安全整数化：模型响应的 usage 可能缺失/为非数字字符串，
     一律折算为 None（按 0 记），绝不让异常打断增强主流程。"""
@@ -663,25 +696,62 @@ def api_batch():
         _apply_request_overrides(cfg, body)
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
+    # 取消登记：请求体可选 batch_id（客户端生成）；无 batch_id = 不可取消（原行为）
+    batch_id = (body.get("batch_id") or "").strip()
+    cancel_ev, cancel_key = None, None
+    if batch_id and _BATCH_ID_RE.fullmatch(batch_id):
+        cancel_key = _batch_cancel_key(batch_id)
+        cancel_ev = threading.Event()
+        with _batch_cancel_lock:
+            _batch_cancel[cancel_key] = cancel_ev
+    cancelled = False
     results, ok, fail = [], 0, 0
-    for i, line in enumerate(lines, 1):
-        t0 = time.time()
-        try:
-            result = engine.enhance(cfg, line)
-        except engine.EnhanceError as e:
+    try:
+        for i, line in enumerate(lines, 1):
+            if cancel_ev is not None and cancel_ev.is_set():
+                cancelled = True
+                logger.info("批量增强被取消（user=%s, batch=%s，已完成 %d 条）",
+                            session["u"], batch_id, ok + fail)
+                break
+            t0 = time.time()
+            try:
+                result = engine.enhance(cfg, line)
+            except engine.EnhanceError as e:
+                dur = int((time.time() - t0) * 1000)
+                _record(cfg, line, "", "failed", dur, "batch", err=str(e))
+                results.append({"index": i, "input": line, "ok": False,
+                                **_error_payload(e)})
+                fail += 1
+                continue
             dur = int((time.time() - t0) * 1000)
-            _record(cfg, line, "", "failed", dur, "batch", err=str(e))
-            results.append({"index": i, "input": line, "ok": False,
-                            **_error_payload(e)})
-            fail += 1
-            continue
-        dur = int((time.time() - t0) * 1000)
-        rid = _record(cfg, line, result["output"], "success", dur, "batch", result=result)
-        results.append({"index": i, "input": line, "ok": True, "record_id": rid,
-                        "output": result["output"], "quality": result.get("quality", "")})
-        ok += 1
-    logger.info("批量增强完成：成功 %d / 失败 %d", ok, fail)
-    return jsonify({"results": results, "ok": ok, "fail": fail})
+            rid = _record(cfg, line, result["output"], "success", dur, "batch", result=result)
+            results.append({"index": i, "input": line, "ok": True, "record_id": rid,
+                            "output": result["output"], "quality": result.get("quality", "")})
+            ok += 1
+    finally:
+        if cancel_key is not None:
+            with _batch_cancel_lock:
+                _batch_cancel.pop(cancel_key, None)
+    logger.info("批量增强完成：成功 %d / 失败 %d / 取消 %s", ok, fail, cancelled)
+    return jsonify({"results": results, "ok": ok, "fail": fail, "cancelled": cancelled})
+
+
+@app.post("/api/batch/cancel")
+@auth_required
+def api_batch_cancel():
+    """取消一次进行中的批量增强（第九轮）：按 batch_id 置位取消事件。
+
+    幂等：批量不存在/已结束也返回 ok（cancelled=false 仅提示未命中）。"""
+    body = request.get_json(silent=True) or {}
+    batch_id = (body.get("batch_id") or "").strip()
+    if not batch_id or not _BATCH_ID_RE.fullmatch(batch_id):
+        return jsonify({"error": "batch_id 非法（1-64 位字母/数字/下划线/连字符）"}), 400
+    key = _batch_cancel_key(batch_id)
+    with _batch_cancel_lock:
+        ev = _batch_cancel.get(key)
+        if ev is not None:
+            ev.set()
+    return jsonify({"ok": True, "cancelled": ev is not None})
 
 
 # =====================================================================

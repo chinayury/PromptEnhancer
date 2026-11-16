@@ -28,7 +28,8 @@ from ..data import llm_cache
 from .lint import MAX_INPUT_CHARS
 from .templates import (SYSTEM_TEMPLATE, USER_TEMPLATE, STYLE_GUIDANCE,
                         MAX_OUTPUT_CHARS, SYSTEM_MODE_TEMPLATE,
-                        SYSTEM_MODE_USER_TEMPLATE, ENHANCE_MODES)
+                        SYSTEM_MODE_USER_TEMPLATE, ENHANCE_MODES,
+                        MODIFIERS)
 
 logger = get_logger("promptforge.core.engine")
 
@@ -42,6 +43,8 @@ TEMP_WHITELIST = {"0.3", "0.5", "0.7", "0.9", "1.0"}
 MAXTOKEN_WHITELIST = {"512", "1024", "2048", "4096"}
 # 增强模式白名单（user=普通提示词增强；system=系统提示词草稿重写）。
 MODE_WHITELIST = set(ENHANCE_MODES)
+# 行为修饰符白名单（第九轮）：键集合来自 templates.MODIFIERS。
+MODIFIER_WHITELIST = set(MODIFIERS.keys())
 
 # 响应缓存总开关：环境变量 PROMPTFORGE_CACHE，默认开启；显式 0/false/no/off 关闭。
 _CACHE_OFF = {"0", "false", "no", "off"}
@@ -155,6 +158,19 @@ def validate_config(cfg: dict) -> dict:
         raise ConfigError("增强模式非法（仅支持 user / system）",
                           code=EnhanceError.CODE_MODEL_NOT_CONFIGURED,
                           hint="增强模式仅支持「用户提示词 / 系统提示词」，请从下拉框选择")
+    mods_in = cfg.get("modifiers") or []
+    if not isinstance(mods_in, (list, tuple)):
+        raise ConfigError("行为修饰符须为列表",
+                          code=EnhanceError.CODE_MODEL_NOT_CONFIGURED,
+                          hint="行为修饰符请从界面勾选，不要手工填写")
+    modifiers = []
+    for m in mods_in:
+        if m not in MODIFIER_WHITELIST:
+            raise ConfigError("行为修饰符非法：%s" % m,
+                              code=EnhanceError.CODE_MODEL_NOT_CONFIGURED,
+                              hint="行为修饰符请从界面勾选，不要手工填写")
+        if m not in modifiers:
+            modifiers.append(m)
 
     return {
         "api_key": api_key,
@@ -164,6 +180,7 @@ def validate_config(cfg: dict) -> dict:
         "max_tokens": max_tokens,
         "style": cfg.get("style", "balanced"),
         "mode": mode,
+        "modifiers": modifiers,
     }
 
 
@@ -272,15 +289,20 @@ def _enhance_messages(cfg: dict, text: str) -> list:
     增强模式（mode，借鉴 linshenkx/prompt-optimizer 的双模式优化）：
       - user（缺省）：SYSTEM_TEMPLATE + USER_TEMPLATE，与历史行为逐字节一致；
       - system：SYSTEM_MODE_TEMPLATE + SYSTEM_MODE_USER_TEMPLATE，
-        把输入按「系统提示词草稿」标准重写。"""
+        把输入按「系统提示词草稿」标准重写。
+
+    行为修饰符（modifiers，第九轮借鉴 prompt-decorators）：按勾选顺序把
+    各修饰符约束段追加到系统提示词末尾；空列表 → 消息与历史逐字节一致。"""
     style_note = STYLE_GUIDANCE.get(cfg["style"], "")
+    mod_note = "".join("\n" + MODIFIERS[m] for m in (cfg.get("modifiers") or [])
+                       if m in MODIFIERS)
     if cfg.get("mode", "user") == "system":
-        system_content = SYSTEM_MODE_TEMPLATE + ("\n\n" + style_note if style_note else "")
+        system_content = SYSTEM_MODE_TEMPLATE + ("\n\n" + style_note if style_note else "") + mod_note
         return [
             {"role": "system", "content": system_content},
             {"role": "user", "content": SYSTEM_MODE_USER_TEMPLATE.replace("{input}", text)},
         ]
-    system_content = SYSTEM_TEMPLATE + ("\n\n" + style_note if style_note else "")
+    system_content = SYSTEM_TEMPLATE + ("\n\n" + style_note if style_note else "") + mod_note
     return [
         {"role": "system", "content": system_content},
         {"role": "user", "content": USER_TEMPLATE.replace("{input}", text)},

@@ -56,6 +56,7 @@ DEFAULT_CONFIG = {
     "max_tokens": "1024",
     "style": "balanced",
     "mode": "user",
+    "modifiers": [],
 }
 
 
@@ -384,6 +385,9 @@ def _ensure_config_columns():
         try:
             if not _column_exists(conn.cursor(), "app_config", "mode"):
                 conn.execute("ALTER TABLE app_config ADD COLUMN mode TEXT")
+            # 行为修饰符（第九轮）：JSON 数组文本，缺省 '[]'
+            if not _column_exists(conn.cursor(), "app_config", "modifiers"):
+                conn.execute("ALTER TABLE app_config ADD COLUMN modifiers TEXT")
             conn.commit()
         finally:
             conn.close()
@@ -472,11 +476,15 @@ def load_config():
         conn = _conn()
         cur = conn.cursor()
         cur.execute(
-            "SELECT provider, api_key, base_url, model, temperature, max_tokens, style, mode "
+            "SELECT provider, api_key, base_url, model, temperature, max_tokens, style, mode, modifiers "
             "FROM app_config WHERE id=1")
         row = cur.fetchone()
         conn.close()
         if row:
+            try:
+                modifiers = json.loads(row[8]) if row[8] else []
+            except ValueError:
+                modifiers = []
             return {
                 "provider": row[0] or DEFAULT_CONFIG["provider"],
                 "api_key": row[1] or "",
@@ -486,6 +494,7 @@ def load_config():
                 "max_tokens": (row[5] or DEFAULT_CONFIG["max_tokens"]),
                 "style": (row[6] or DEFAULT_CONFIG["style"]),
                 "mode": (row[7] or DEFAULT_CONFIG["mode"]),
+                "modifiers": modifiers if isinstance(modifiers, list) else [],
             }
     except Exception as e:
         logger.warning("读取配置失败，使用默认配置: %s", e)
@@ -496,14 +505,16 @@ def save_config(cfg):
     _ensure_config_columns()
     conn = _conn()
     cur = conn.cursor()
+    mods = cfg.get("modifiers") or []
     cur.execute(
         "INSERT OR REPLACE INTO app_config "
-        "(id, provider, api_key, base_url, model, temperature, max_tokens, style, mode, updated_at) "
-        "VALUES (1,?,?,?,?,?,?,?,?,?)",
+        "(id, provider, api_key, base_url, model, temperature, max_tokens, style, mode, modifiers, updated_at) "
+        "VALUES (1,?,?,?,?,?,?,?,?,?,?)",
         (cfg.get("provider", "DeepSeek"), cfg.get("api_key", ""),
          cfg.get("base_url", ""), cfg.get("model", ""),
          str(cfg.get("temperature", "0.7")), str(cfg.get("max_tokens", "1024")),
-         cfg.get("style", "balanced"), cfg.get("mode", "user"), _now_iso()))
+         cfg.get("style", "balanced"), cfg.get("mode", "user"),
+         json.dumps(mods if isinstance(mods, list) else [], ensure_ascii=False), _now_iso()))
     conn.commit()
     conn.close()
     logger.info("配置已保存（provider=%s）", cfg.get("provider"))
