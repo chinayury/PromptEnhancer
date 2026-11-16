@@ -33,7 +33,7 @@ logger = get_logger("promptforge.data.versions")
 # 版本来源：init=首个固化且与记录原始输出一致；manual=手动编辑/粘贴；
 # enhance=标注由某模型增强而来；rollback_restore 预留（回滚只切指针不建行）。
 SOURCES = ("init", "manual", "enhance")
-CLIENT_SOURCES = ("manual", "enhance")     # 客户端允许传入的来源（init 由服务端判定）
+CLIENT_SOURCES = ("manual", "enhance", "iterate")   # 客户端允许传入的来源（init 由服务端判定；iterate=评估回灌重写，第八轮 B-13）
 COMMIT_MSG_MAX = 80                        # 版本说明上限（借 pezzo/langfuse 的必填短说明）
 CONTENT_MAX_CHARS = 200_000                # 版本正文上限（防多 MB 大对象入库）
 SLOT_VALUE_MAX = 20_000                    # 单个槽值上限

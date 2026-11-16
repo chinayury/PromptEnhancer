@@ -196,6 +196,48 @@ ENHANCE_MODES = ("user", "system")
 MODE_LABEL_TO_KEY = {"用户提示词": "user", "系统提示词": "system"}
 MODE_KEY_TO_LABEL = {v: k for k, v in MODE_LABEL_TO_KEY.items()}
 
+# =====================================================================
+# 评估回灌重写（iterate，借鉴 linshenkx/prompt-optimizer 的 iterate /
+# evaluation-rewrite 闭环，第八轮 B-13）：把评估裁判的分数与建议回灌为
+# 重写指令，对既有增强版本做定向修订，产出版本链新行（source='iterate'）。
+# 调用方式与评估裁判一致：engine.raw_completion(cfg, ITERATE_SYSTEM, user)。
+# =====================================================================
+ITERATE_SYSTEM = """You are a Prompt Rewrite Assistant specializing in revising prompts based on evaluation feedback. You will receive: the original prompt, a previously enhanced version, and an evaluation report (accuracy / completeness / clarity scores plus one improvement suggestion). Rewrite the enhanced version so it directly addresses the evaluation feedback while preserving its intent, scope, and language. Respond with only the rewritten prompt - no commentary, no quotes, no explanation."""
+
+ITERATE_USER = """You are revising an enhanced prompt based on its evaluation report.
+
+    ORIGINAL PROMPT (the user's request, for intent reference only):
+    {original}
+
+    CURRENT ENHANCED VERSION (to be revised):
+    {enhanced}
+
+    EVALUATION REPORT:
+    {score}
+
+    TASK:
+    Rewrite the current enhanced version so the evaluation feedback is addressed.
+
+    CRITICAL PRIORITY - LANGUAGE CONSISTENCY:
+    1. You MUST write the rewritten prompt in the same language as the current enhanced version.
+    2. Do not translate the intent into another language; keep a natural matching mix if one exists.
+    3. Never include language labels or meta notes in the output.
+
+    REWRITE REQUIREMENTS:
+    1. Return only the rewritten prompt text; do not add explanations, prefaces, markdown fences, labels, or analysis.
+    2. Address the improvement suggestion directly and fix the weakest dimension first.
+    3. Preserve the original intent, topic, constraints, and target output type. Do not answer the request.
+    4. Keep everything that already works in the current version; make targeted changes only.
+    5. Keep the rewritten prompt complete and concise. Do not end with an unfinished list, dangling conjunction, or trailing colon.
+    6. Do not add unrelated requirements, unsupported facts, or unnecessary sections.
+
+    EXAMPLE:
+    Original: "请帮我解释这段代码的功能"
+    Current enhanced: "请解释这段代码的主要功能、执行流程和关键逻辑。"
+    Evaluation: {"accuracy": 8, "completeness": 4, "clarity": 8, "suggestion": "补充边界情况与验证步骤要求"}
+    Rewritten prompt: "请解释这段代码的主要功能、执行流程和关键逻辑，指出需要重点关注的边界情况，并给出可执行的验证步骤。"
+"""
+
 # 界面标签 -> 内部键；内部键 -> 界面标签。
 STYLE_LABEL_TO_KEY = {"均衡": "balanced", "更口语": "casual", "更技术": "technical", "更简洁": "concise"}
 STYLE_KEY_TO_LABEL = {v: k for k, v in STYLE_LABEL_TO_KEY.items()}

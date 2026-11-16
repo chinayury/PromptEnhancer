@@ -907,6 +907,14 @@ async function loadConfig(){
   });
   if($("ab-style-a")) $("ab-style-a").value = "balanced";
   if($("ab-style-b")) $("ab-style-b").value = "technical";
+  // A/B 选择记忆（第八轮 UI 状态记忆）：恢复上次所选厂商与风格（选项仍存在才生效）
+  let _abSaved = null;
+  try{ _abSaved = JSON.parse(localStorage.getItem("pf_ab_compare") || "null"); }catch(e){ _abSaved = null; }
+  const _pickOpt = (sel, val) => { if(sel && val && Array.from(sel.options).some(o=>o.value===val)) sel.value = val; };
+  if(_abSaved){
+    _pickOpt($("ab-prov-a"), _abSaved.provA); _pickOpt($("ab-prov-b"), _abSaved.provB);
+    _pickOpt($("ab-style-a"), _abSaved.styleA); _pickOpt($("ab-style-b"), _abSaved.styleB);
+  }
   if(d.env_key_injected){
     $("cfg-env-note").style.display = "inline";
     $("cfg-key").disabled = true; $("cfg-key").placeholder = "（环境变量已注入）";
@@ -1140,6 +1148,7 @@ $("ab-run").addEventListener("click", async ()=>{
   const styleA = $("ab-style-a").value, styleB = $("ab-style-b").value;
   const provA = $("ab-prov-a") ? $("ab-prov-a").value : "";
   const provB = $("ab-prov-b") ? $("ab-prov-b").value : "";
+  try{ localStorage.setItem("pf_ab_compare", JSON.stringify({provA, provB, styleA, styleB})); }catch(e){ /* 记忆失败不影响主流程 */ }
   const call = (style, provider) => api("/api/enhance", {method:"POST",
     body: JSON.stringify(provider ? {text, style, provider} : {text, style})}).catch(e=>({error:e.message}));
   try{
@@ -1357,6 +1366,7 @@ let _lastDiffUnified = "";   // 最近一次 diff 的统一文本（供复制为
 function srcLabel(s){
   if(s === "init") return "初始固化";
   if(s === "enhance") return "AI 增强";
+  if(s === "iterate") return "评估回灌";
   return "手动编辑";
 }
 function openVersions(rec){
@@ -1388,14 +1398,14 @@ function renderScoreChart(versions){
   box.innerHTML =
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">' +
       '<span class="hint" style="font-weight:700">评估分数趋势（最近 ' + scored.length + ' 个带评分版本）</span>' +
-      '<span style="font-size:11px;color:var(--muted)"><span style="color:#1B4FD8">■ 准确性</span>&nbsp; <span style="color:#0E8FA8">■ 完整性</span>&nbsp; <span style="color:#0F7A43">■ 清晰度</span></span>' +
+      '<span style="font-size:11px;color:var(--muted)"><span style="color:var(--cobalt)">■ 准确性</span>&nbsp; <span style="color:var(--cyan)">■ 完整性</span>&nbsp; <span style="color:var(--ok)">■ 清晰度</span></span>' +
     '</div>' +
     '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" height="' + H + '" role="img" aria-label="评估分数趋势">' +
       '<line x1="'+PL+'" y1="'+ys(0)+'" x2="'+(W-PR)+'" y2="'+ys(0)+'" stroke="var(--line-strong)" stroke-width="1"/>' +
       '<line x1="'+PL+'" y1="'+ys(5)+'" x2="'+(W-PR)+'" y2="'+ys(5)+'" stroke="var(--line)" stroke-dasharray="3,3"/>' +
       '<text x="'+(PL-6)+'" y="'+(ys(5)+4)+'" font-size="10" fill="var(--muted)" text-anchor="end">5</text>' +
       '<text x="'+(PL-6)+'" y="'+(ys(10)+4)+'" font-size="10" fill="var(--muted)" text-anchor="end">10</text>' +
-      mk("accuracy","#1B4FD8") + mk("completeness","#0E8FA8") + mk("clarity","#0F7A43") +
+      mk("accuracy","var(--cobalt)") + mk("completeness","var(--cyan)") + mk("clarity","var(--ok)") +
       scored.map((v,i)=>'<text x="'+xs(i)+'" y="'+(H-8)+'" font-size="10" fill="var(--muted)" text-anchor="middle">v'+v.version_no+'</text>').join("") +
     '</svg>';
 }
@@ -1431,6 +1441,7 @@ function renderVerList(){
       '<span style="display:flex;gap:6px;margin-left:auto">' +
       '<button class="btn sm ghost" data-favver="' + v.id + '" title="收藏这条记录并把复现输出固定为该版本">' +
         (v.id === _verFavVerId ? "★ 已固定" : "固定此版") + "</button>" +
+      (v.score ? '<button class="btn sm ghost" data-iterate="' + v.id + '" title="按该版本的评估反馈重写为新版本（评估回灌）">按评估重写</button>' : "") +
       (v.is_current ? "" : '<button class="btn sm ghost" data-rollback="' + v.id + '">回滚到此版</button>') +
       "</span></div>";
   }).join("");
@@ -1450,8 +1461,7 @@ function renderVerList(){
         });
     });
   });
-  box.querySelectorAll("[data-favver]").forEach(b=>{
-    b.addEventListener("click", ()=>{
+  box.querySelectorAll("[data-favver]").forEach(b=>{    b.addEventListener("click", ()=>{
       const vid = parseInt(b.dataset.favver);
       const v = _verCache.find(x=>x.id === vid);
       const unpin = vid === _verFavVerId;    // 再点已固定版本 = 取消收藏
@@ -1469,6 +1479,22 @@ function renderVerList(){
             loadVersions(); refreshHistory();
           }catch(e){ setStatus("收藏失败: " + e.message); toast("收藏失败：" + e.message, "err"); }
         });
+    });
+  box.querySelectorAll("[data-iterate]").forEach(b=>{
+    b.addEventListener("click", async ()=>{
+      const vid = parseInt(b.dataset.iterate);
+      const v = _verCache.find(x=>x.id === vid);
+      b.disabled = true; b.textContent = "重写中…";
+      try{
+        const d = await api("/api/history/" + _verRecord.id + "/iterate", {method:"POST",
+          body: JSON.stringify({version_id: vid})});
+        setStatus("已按 v" + (v ? v.version_no : vid) + " 的评估反馈生成新版本 v" + d.version.version_no);
+        toast("评估回灌完成", "ok");
+        loadVersions();
+      }catch(e){
+        setStatus("按评估重写失败: " + e.message); toast("重写失败：" + e.message, "err");
+        b.disabled = false; b.textContent = "按评估重写";
+      }
     });
   });
 }

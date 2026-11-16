@@ -987,6 +987,62 @@ def api_history_evaluate(rid):
                     "duration_ms": int((time.time() - t0) * 1000)})
 
 
+@app.post("/api/history/<int:rid>/iterate")
+@auth_required
+def api_history_iterate(rid):
+    """按评估反馈重写版本（B-13，借鉴 linshenkx/prompt-optimizer 的
+    iterate / evaluation-rewrite 闭环，第八轮）。
+
+    请求体 {"version_id": N}：须属于该记录且已带评估分数（先「评估」再回灌）。
+    把该版本的评估报告回灌为重写指令，经 raw_completion 产出修订版，固化为
+    版本链新行（source='iterate'，继承原版本槽值，继承原版本 commit 前缀）；
+    不改动原版本与当前指针，链保持完整。"""
+    body = request.get_json(silent=True) or {}
+    version_id = body.get("version_id")
+    if not isinstance(version_id, int):
+        return jsonify({"error": "version_id 须为整数版本 id"}), 400
+    rec = db.get_record(rid)
+    if rec is None:
+        return jsonify({"error": "历史记录不存在"}), 404
+    v = verchain.get_version(rid, version_id)
+    if v is None:
+        return jsonify({"error": "版本不存在或不属于该提示词"}), 404
+    score = v.get("score")
+    if not score:
+        return jsonify({"error": "该版本还没有评估分数，请先在版本链中执行「评估」",
+                        "hint": "评估通过后才可按评估反馈重写"}), 400
+
+    score_text = ("accuracy: %s/10; completeness: %s/10; clarity: %s/10; suggestion: %s"
+                  % (score.get("accuracy"), score.get("completeness"),
+                     score.get("clarity"), score.get("suggestion") or "—"))
+    user_prompt = (templates.ITERATE_USER
+                   .replace("{original}", (rec.get("input") or "")[:_JUDGE_MAX_CHARS])
+                   .replace("{enhanced}", (v.get("content") or "")[:_JUDGE_MAX_CHARS])
+                   .replace("{score}", score_text[:_JUDGE_MAX_CHARS]))
+    cfg = _effective_cfg()
+    t0 = time.time()
+    try:
+        result = engine.raw_completion(cfg, templates.ITERATE_SYSTEM, user_prompt, timeout=90)
+    except engine.EnhanceError as e:
+        return jsonify(_error_payload(e, "按评估重写失败：%s" % e)), _enhance_status_code(e)
+    dur = int((time.time() - t0) * 1000)
+    content = (result.get("output") or "").strip()
+    if not content:
+        return jsonify({"error": "模型返回为空，重写未完成，请稍后重试"}), 502
+    try:
+        new = verchain.create_version(
+            rid, content=content,
+            commit_message="按评估重写（基于 v%d 评估反馈）" % v["version_no"],
+            slot_values=v.get("slot_values"), source="iterate",
+            model=cfg.get("model", ""), created_by=session["u"])
+    except verchain.VersionError as e:
+        return jsonify({"error": str(e)}), e.status
+    logger.info("用户 %s 对记录 %d 的 v%d 执行评估回灌重写 → v%d（source=iterate）",
+                session["u"], rid, v["version_no"], new["version_no"])
+    return jsonify({"ok": True, "version": new, "source_version_id": version_id,
+                    "duration_ms": dur})
+
+
 # =====================================================================
 # Token 用量与成本统计（全局库 api_usage 表）
 # =====================================================================
