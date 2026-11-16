@@ -4,7 +4,7 @@
 # Copyright (C) 2026 智维ITMSKY
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """
-提示词工坊 · PromptForge Web 版启动入口（v0.1.4 · 多用户）。
+提示词工坊 · PromptForge Web 版启动入口（v0.1.5 · 多用户）。
 
 以 Flask + Waitress 提供浏览器界面，复用与桌面版完全相同的核心层：
   promptforge.core   —— 增强引擎（/chat/completions 调用、重试、质量判定）
