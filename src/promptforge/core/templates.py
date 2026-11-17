@@ -18,8 +18,16 @@
     SYSTEM_MODE_USER_TEMPLATE，按系统提示词的标准（角色/约束/输出格式/边界）重写。
 
 风格化约束在系统提示词之后追加，对应「均衡 / 更口语 / 更技术 / 更简洁」四种增强风格。
-模板与风格均为「配置即数据」，后续可外置为文件以支持热更新与多语言。
+模板与风格均为「配置即数据」：模板支持外置为 TOML 文件以支持热更新与多语言
+（见文末「模板外置」，借鉴 microsoft/prompty 的提示词资产文件思想）。
 """
+
+import os
+import tomllib
+
+from ..utils.logging_setup import get_logger
+
+logger = get_logger("promptforge.core.templates")
 
 SYSTEM_TEMPLATE = """You are a Prompt Engineering Expert specializing in improving user prompts for a development code assistant. When given a prompt, analyze and enhance it to create a more effective version while maintaining its core purpose. The requests are being made to an assistant that specializes in writing code.
 
@@ -267,3 +275,97 @@ MAXTOKEN_OPTIONS = ["512", "1024", "2048", "4096"]
 
 # 模板对增强结果字数的软约束（超出仅告警，不强制截断以保证语义完整）。
 MAX_OUTPUT_CHARS = 800
+
+
+# =====================================================================
+# 模板外置（第十轮规划 9 落地，借鉴 microsoft/prompty 的提示词资产文件思想）
+# =====================================================================
+# 外置目录：<数据目录>/templates/*.toml（多用户 Web 版按工作区隔离，各用户
+# 独立；桌面/CLI 为全局 data/templates）。整份文件即 TOML：
+#   mode   = "user" | "system"        （覆盖哪一套内置模板）
+#   system = '''…'''                  （系统提示词模板全文）
+#   user   = '''…'''                  （用户提示词模板全文，含 {input} 占位）
+# 其余字段一律拒绝。安全校验（PromptHub 导入面清单裁剪版，docs/05 5.2）：
+# 仅一层目录、拒符号链接、单文件 ≤256KB、正文 ≤256KB、最多 10 份。
+# 热更新：按目录签名（文件名+mtime+size）变化触发重载；任何异常降级内置
+# 模板，绝不阻断增强主流程。模板正文参与缓存键，外置切换天然隔离。
+TEMPLATE_FILE_MAX_BYTES = 256 * 1024
+TEMPLATE_MAX_FILES = 10
+_EXTERNAL_FIELDS = {"mode", "system", "user"}
+
+_ext_cache = {"sig": None, "pairs": None}
+
+
+def _load_external_dir(dirpath):
+    """扫描外置目录并解析全部合法 .toml；同 mode 多份时按文件名序后者覆盖。
+    单文件失败只跳过该文件（warning），不影响其余。"""
+    pairs = {}
+    try:
+        names = sorted(os.listdir(dirpath))
+    except OSError:
+        return pairs
+    loaded = 0
+    for name in names:
+        if not name.lower().endswith(".toml"):
+            continue
+        if loaded >= TEMPLATE_MAX_FILES:
+            logger.warning("外置模板超过 %d 份上限，忽略多余文件（%s…）",
+                           TEMPLATE_MAX_FILES, dirpath)
+            break
+        p = os.path.join(dirpath, name)
+        try:
+            if os.path.islink(p) or not os.path.isfile(p):
+                logger.warning("外置模板拒绝符号链接/非常规文件：%s", name)
+                continue
+            if os.path.getsize(p) > TEMPLATE_FILE_MAX_BYTES:
+                logger.warning("外置模板超大小上限，忽略：%s", name)
+                continue
+            with open(p, "rb") as f:
+                data = tomllib.load(f)
+            unknown = set(data) - _EXTERNAL_FIELDS
+            if unknown:
+                raise ValueError("未知字段：%s" % ",".join(sorted(unknown)))
+            mode = data.get("mode")
+            if mode not in ENHANCE_MODES:
+                raise ValueError("mode 须为 user / system")
+            system, user = data.get("system"), data.get("user")
+            for k, v in (("system", system), ("user", user)):
+                if not isinstance(v, str) or not v.strip():
+                    raise ValueError("%s 须为非空文本" % k)
+                if len(v) > TEMPLATE_FILE_MAX_BYTES:
+                    raise ValueError("%s 正文超长" % k)
+            pairs[mode] = (system, user)
+            loaded += 1
+        except (OSError, ValueError, tomllib.TOMLDecodeError) as e:
+            logger.warning("外置模板 %s 加载失败（已跳过）: %s", name, e)
+    return pairs
+
+
+def _dir_signature(dirpath):
+    """目录签名：[(文件名, mtime_ns, size)] 排序元组；目录不可读 → None。"""
+    try:
+        entries = []
+        for entry in os.scandir(dirpath):
+            st = entry.stat()
+            entries.append((entry.name, st.st_mtime_ns, st.st_size))
+        return tuple(sorted(entries))
+    except OSError:
+        return None
+
+
+def get_pair(mode, ext_dir=None):
+    """返回该模式的 (system, user) 模板：优先外置覆盖，否则内置默认。
+
+    外置目录签名与缓存不一致时重载（热更新）；目录不可读/全部解析失败
+    一律降级内置模板，绝不阻断增强主流程。mode 非 user 时按 system 处理。"""
+    if ext_dir:
+        sig = _dir_signature(ext_dir)
+        if sig != _ext_cache["sig"]:
+            _ext_cache["sig"] = sig
+            _ext_cache["pairs"] = _load_external_dir(ext_dir) if sig else {}
+        pair = (_ext_cache["pairs"] or {}).get(mode)
+        if pair:
+            return pair
+    if mode == "system":
+        return SYSTEM_MODE_TEMPLATE, SYSTEM_MODE_USER_TEMPLATE
+    return SYSTEM_TEMPLATE, USER_TEMPLATE

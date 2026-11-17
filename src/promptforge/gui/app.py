@@ -6,6 +6,7 @@
 
 import os
 import csv
+import json
 import threading
 import time
 import tkinter.filedialog as filedialog
@@ -89,12 +90,46 @@ class PromptForgeApp:
         self.root = ctk.CTk()
         self.root.title("提示词工坊 · PromptForge v%s" % _version())
         self.root.geometry("1200x820")
+        self._restore_window_state()
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.root.grid_columnconfigure(1, weight=1)
         self.root.grid_rowconfigure(0, weight=1)
 
         self._build_sidebar()
         self._build_main()
         self._refresh_history()
+
+    # ---------------- 窗口状态记忆（第十轮，规划 8 桌面部分） ----------------
+    def _gui_state_path(self):
+        return os.path.join(db.BASE_DIR, "gui_state.json")
+
+    def _restore_window_state(self):
+        """恢复上次关闭时的窗口尺寸/最大化状态（gui_state.json，越界回落默认）。"""
+        try:
+            with open(self._gui_state_path(), "r", encoding="utf-8") as f:
+                st = json.load(f)
+            w = int(st.get("width", 0)); h = int(st.get("height", 0))
+            if 640 <= w <= 7680 and 480 <= h <= 4320:
+                self.root.geometry("%dx%d" % (w, h))
+            if st.get("maximized"):
+                self.root.state("zoomed")
+        except Exception:
+            pass    # 状态文件缺失/损坏 → 用默认尺寸，绝不阻断启动
+
+    def _save_window_state(self):
+        try:
+            st = {"width": self.root.winfo_width(), "height": self.root.winfo_height(),
+                  "maximized": self.root.state() == "zoomed"}
+            with open(self._gui_state_path(), "w", encoding="utf-8") as f:
+                json.dump(st, f, ensure_ascii=False)
+        except Exception:
+            pass    # 记忆失败不影响退出
+
+    def _on_close(self):
+        try:
+            self._save_window_state()
+        finally:
+            self.root.destroy()
 
     # ---------------- 侧边栏 ----------------
     def _build_sidebar(self):

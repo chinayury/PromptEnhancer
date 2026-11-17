@@ -25,7 +25,9 @@ import urllib.error
 
 from ..utils.logging_setup import get_logger
 from ..data import llm_cache
+from ..data import database as db
 from .lint import MAX_INPUT_CHARS
+from . import templates
 from .templates import (SYSTEM_TEMPLATE, USER_TEMPLATE, STYLE_GUIDANCE,
                         MAX_OUTPUT_CHARS, SYSTEM_MODE_TEMPLATE,
                         SYSTEM_MODE_USER_TEMPLATE, ENHANCE_MODES,
@@ -53,6 +55,16 @@ _CACHE_OFF = {"0", "false", "no", "off"}
 def _cache_enabled() -> bool:
     """PROMPTFORGE_CACHE 未设置或非关闭值 → 启用缓存；关闭时既不读也不写。"""
     return os.environ.get("PROMPTFORGE_CACHE", "1").strip().lower() not in _CACHE_OFF
+
+
+def _templates_dir():
+    """外置模板目录（第十轮规划 9）：环境变量 PROMPTFORGE_TEMPLATES_DIR 优先
+    （测试/CI/部署覆盖），否则跟随当前工作区 <数据目录>/templates —— 多用户
+    Web 版线程局部工作区绑定下按用户隔离，桌面/CLI 为全局 data/templates。"""
+    env_dir = os.environ.get("PROMPTFORGE_TEMPLATES_DIR")
+    if env_dir:
+        return env_dir
+    return os.path.join(os.path.dirname(db.get_db_path()), "templates")
 
 
 # =====================================================================
@@ -292,20 +304,19 @@ def _enhance_messages(cfg: dict, text: str) -> list:
         把输入按「系统提示词草稿」标准重写。
 
     行为修饰符（modifiers，第九轮借鉴 prompt-decorators）：按勾选顺序把
-    各修饰符约束段追加到系统提示词末尾；空列表 → 消息与历史逐字节一致。"""
+    各修饰符约束段追加到系统提示词末尾；空列表 → 消息与历史逐字节一致。
+
+    模板外置（第十轮规划 9）：get_pair 按模式返回 (system, user) 模板对，
+    外置 TOML 存在时覆盖内置默认（热更新、降级内置），正文参与缓存键。"""
+    mode = cfg.get("mode", "user")
+    system_tpl, user_tpl = templates.get_pair(mode, _templates_dir())
     style_note = STYLE_GUIDANCE.get(cfg["style"], "")
     mod_note = "".join("\n" + MODIFIERS[m] for m in (cfg.get("modifiers") or [])
                        if m in MODIFIERS)
-    if cfg.get("mode", "user") == "system":
-        system_content = SYSTEM_MODE_TEMPLATE + ("\n\n" + style_note if style_note else "") + mod_note
-        return [
-            {"role": "system", "content": system_content},
-            {"role": "user", "content": SYSTEM_MODE_USER_TEMPLATE.replace("{input}", text)},
-        ]
-    system_content = SYSTEM_TEMPLATE + ("\n\n" + style_note if style_note else "") + mod_note
+    system_content = system_tpl + ("\n\n" + style_note if style_note else "") + mod_note
     return [
         {"role": "system", "content": system_content},
-        {"role": "user", "content": USER_TEMPLATE.replace("{input}", text)},
+        {"role": "user", "content": user_tpl.replace("{input}", text)},
     ]
 
 
