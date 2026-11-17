@@ -2,6 +2,33 @@
 
 本文件记录 PromptEnhancer（提示词工坊 PromptForge）的显著变更（新增在前）。
 
+## [2026-11-18] v0.1.7 · 第十一轮维护（MCP stdio 服务）
+
+### Added（新增功能）
+- **MCP stdio 服务**（规划 10 落地，借鉴 linshenkx/prompt-optimizer 的
+  packages/mcp-server）：`python -m promptforge mcp` 以换行分隔 JSON-RPC 2.0
+  （MCP 2024-11-05 子集：initialize / notifications / tools/list / tools/call /
+  ping）把工坊能力暴露给 Claude Desktop / Cursor 等本地 MCP 客户端。
+  工具面：`enhance_prompt(text, mode?, style?)` 与 `lint_prompt(text)`，
+  与 Web/桌面版同一引擎同口径（配置取桌面 data/app_config，
+  `PROMPTFORGE_API_KEY` 环境变量优先）。**仅 stdio、不监听任何端口**——信任面
+  为本机进程，无远程暴露；stdout 只输出协议 JSON，日志走文件/stderr，
+  密钥零回显。标准库实现，零新依赖。
+- **`PROMPTFORGE_DATA_DIR` 环境变量**（入口处统一生效）：指定数据目录，供
+  MCP / 多实例 / 测试使用；日志与数据库路径均跟随该目录；未设置时保持
+  桌面版默认行为不变。
+
+### Changed（文档）
+- 五篇文档「对应代码版本」同步 v0.1.7；功能使用说明新增「MCP stdio 服务」
+  一节（含 Claude Desktop 接入配置示例）；部署教程环境变量表补充
+  `PROMPTFORGE_DATA_DIR`；规划 10 完成。
+
+### Verified（验证）
+- 69 项冒烟自测全量通过（既有 64 项 + 新增 7 项：initialize、tools/list、
+  enhance_prompt 端到端、lint_prompt、未知方法 -32601、坏行 -32700 后进程
+  存活、通知不回包语义）。实现过程中定位两处测试脚本自身问题（对协议通知
+  误等响应、坏行与后续响应的读取顺序），服务端行为经单点探针验证正确。
+
 ## [2026-11-18] v0.1.6 · 第十轮维护（模板外置 TOML + 桌面窗口记忆）
 
 ### Added（新增功能）
