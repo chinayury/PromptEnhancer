@@ -3,7 +3,7 @@
 # Project: 提示词工坊项目
 # Copyright (C) 2026 智维ITMSKY
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""包入口：python -m promptforge [cli ...]"""
+"""包入口：python -m promptforge [cli|mcp ...]"""
 
 import os
 import sys
@@ -11,7 +11,12 @@ import sys
 from .utils.logging_setup import configure_logging, set_log_file, ensure_utf8_console
 from .data import database as db
 
-# 在导入任何会触发日志初始化的模块前，确定日志文件路径
+# 在导入任何会触发日志初始化的模块前，确定日志文件路径。
+# PROMPTFORGE_DATA_DIR（第十一轮，MCP/测试用）：在入口处统一生效，日志与
+# 数据库路径均跟随该目录；未设置时保持桌面版默认（项目根/ exe 旁 data/）。
+_data_dir_env = os.environ.get("PROMPTFORGE_DATA_DIR")
+if _data_dir_env:
+    db.set_base_dir(_data_dir_env)
 set_log_file(os.path.join(db.BASE_DIR, "promptforge.log"))
 
 
@@ -26,10 +31,13 @@ def _gui_available():
 def main():
     ensure_utf8_console()
     configure_logging()
-    db.init_db()
     if len(sys.argv) > 1 and sys.argv[1] == "cli":
         from . import cli
-        sys.exit(cli.run(sys.argv[2:]))
+        sys.exit(cli.run(sys.argv[2:]))          # cli.run 内部自行 init_db
+    if len(sys.argv) > 1 and sys.argv[1] == "mcp":
+        from .mcp_server import run as mcp_run
+        sys.exit(mcp_run())                      # run 内部按数据目录 init_db
+    db.init_db()
     if not _gui_available():
         print("=" * 60)
         print("缺少 customtkinter 库，无法启动 GUI。")
