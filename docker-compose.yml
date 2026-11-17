@@ -9,7 +9,7 @@ services:
             context: .
             args:
                 PIP_INDEX_URL: https://pypi.tuna.tsinghua.edu.cn/simple
-        image: promptforge:v0.1.5         # 推送私服时改成 你的仓库/promptforge:v0.1.5
+        image: promptforge:v0.1.6         # 推送私服时改成 你的仓库/promptforge:v0.1.6
         ports:
             - '6085:8000'
         environment:
