@@ -38,6 +38,8 @@ from .config import load_providers
 from .core import engine
 from .data import database as db
 from .utils.logging_setup import get_logger
+from forge import assembler as forge_assembler
+from forge import parser as forge_parser
 
 logger = get_logger("promptforge.mcp_server")
 
@@ -71,6 +73,35 @@ _TOOLS = [
             "type": "object",
             "properties": {
                 "text": {"type": "string", "description": "待体检的提示词（≤100000 字符）"},
+            },
+            "required": ["text"],
+        },
+    },
+    {
+        "name": "forge_outline",
+        "description": "指令构造器（五槽）：解析设计文档，返回章节目录 / 待确认项概览（纯本地零 token，定位用）",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "text": {"type": "string", "description": "设计文档全文（粘贴）"},
+            },
+            "required": ["text"],
+        },
+    },
+    {
+        "name": "forge_generate",
+        "description": "指令构造器（五槽）：把设计文档编译为「任务+切片+范围+反向边界+验收」的结构化指令（纯本地零 token）",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "text": {"type": "string", "description": "设计文档全文（粘贴）"},
+                "task": {"type": "string", "description": "一句话任务，动词开头"},
+                "pick": {"type": "string", "description": "本期切片章节编号，逗号分隔（如 3,4.6；先 forge_outline 核对）"},
+                "period": {"type": "string", "description": "本期名称（如 一期）"},
+                "code": {"type": "string", "description": "涉及代码文件，逗号分隔"},
+                "decision": {"type": "array", "items": {"type": "string"},
+                             "description": "对文档待确认项的答复（每条一句）"},
+                "no_gate": {"type": "boolean", "description": "不附加【本期出口】门禁（默认 false）"},
             },
             "required": ["text"],
         },
@@ -117,9 +148,45 @@ def _tool_lint_prompt(arguments):
     return lint_core.lint(text)
 
 
+def _tool_forge_outline(arguments):
+    text = (arguments.get("text") or "").strip()
+    if not text:
+        raise ValueError("text 不能为空")
+    if len(text) > engine.MAX_INPUT_CHARS:
+        raise ValueError("输入过长（上限 %d 字符）" % engine.MAX_INPUT_CHARS)
+    import contextlib
+    from forge.cli import _print_outline
+    doc = forge_parser.parse(text, "MCP 粘贴文本")
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):      # outline 打印流重定向，保 stdout 协议纯净
+        _print_outline(doc)
+    return buf.getvalue()
+
+
+def _tool_forge_generate(arguments):
+    text = (arguments.get("text") or "").strip()
+    if not text:
+        raise ValueError("text 不能为空")
+    if len(text) > engine.MAX_INPUT_CHARS:
+        raise ValueError("输入过长（上限 %d 字符）" % engine.MAX_INPUT_CHARS)
+    doc = forge_parser.parse(text, "MCP 粘贴文本")
+    tokens = [t.strip() for t in (arguments.get("pick") or "").split(",") if t.strip()]
+    picks = forge_parser.resolve_picks(doc, tokens) if tokens else []
+    res = forge_assembler.assemble(
+        doc, picks=picks, task=arguments.get("task"),
+        code_files=[c.strip() for c in (arguments.get("code") or "").split(",") if c.strip()],
+        decisions=arguments.get("decision") or [],
+        period=arguments.get("period"),
+        add_exit_gate=not bool(arguments.get("no_gate")))
+    unresolved = json.dumps(res.get("unresolved", []), ensure_ascii=False)
+    return res["prompt"] + "\n\n---\n[forge 报告] 待确认项：" + unresolved
+
+
 _TOOL_HANDLERS = {
     "enhance_prompt": _tool_enhance_prompt,
     "lint_prompt": _tool_lint_prompt,
+    "forge_outline": _tool_forge_outline,
+    "forge_generate": _tool_forge_generate,
 }
 
 

@@ -2,6 +2,30 @@
 
 本文件记录 PromptEnhancer（提示词工坊 PromptForge）的显著变更（新增在前）。
 
+## [2026-11-19] v0.1.8 · 第十二轮维护（依赖安全巡检 + MCP 补 forge 工具）
+
+### Security（依赖安全）
+- **werkzeug 下界 3.1.3 → 3.1.9**：2026-11-18 OSV 全量比对发现 3.1.3 仍受
+  `safe_join()` Windows 特殊设备名系列告警影响（CVE-2025-66221 → 3.1.4、
+  CVE-2026-21860 → 3.1.5、CVE-2026-27199 → 3.1.6、CVE-2026-102598 → 3.1.9；
+  影响面为静态文件服务路径，桌面 Windows 形态相关）。flask / waitress /
+  jinja2 下界即当前最新且无已知告警，不变；customtkinter 上游 6.0.0 为大版本
+  （OSV 无告警），涉及 GUI 行为回归另行安排。
+
+### Added（新增功能）
+- **MCP 新增 forge 工具**：`forge_outline(text)`（章节目录/待确认概览）与
+  `forge_generate(text, task, pick, period, code, decision, no_gate)`（五槽
+  指令编译）——纯本地零 token，MCP 客户端可「先 outline 核对章节、再
+  generate 产指令」；outline 经 stdout 重定向捕获，协议输出保持纯净。
+
+### Changed（文档）
+- docs/04「依赖核查」表注明复查日期与 werkzeug 新依据；requirements-web.txt
+  注释同步；MCP 工具面文档更新。
+
+### Verified（验证）
+- 71 项冒烟自测全量通过（既有 69 项 + 新增 2 项：forge_outline 概览、
+  forge_generate 五槽指令产出）。
+
 ## [2026-11-18] v0.1.7 · 第十一轮维护（MCP stdio 服务）
 
 ### Added（新增功能）
