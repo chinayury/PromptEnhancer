@@ -16,7 +16,7 @@ InstructionForge —— 指令构造器
 ================================================================
 """
 
-__version__ = "0.1.7"
+__version__ = "0.1.8"
 
 from . import parser as _parser
 from . import assembler as _assembler
