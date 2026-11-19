@@ -2,6 +2,22 @@
 
 本文件记录 PromptEnhancer（提示词工坊 PromptForge）的显著变更（新增在前）。
 
+## [2026-11-20] v0.1.9 · compose 修复（PROMPTFORGE_API_KEY 注入容器）
+
+### Fixed（部署配置）
+- **`.env` 中的 `PROMPTFORGE_API_KEY` 未传入容器**：compose 仅替换被引用的
+  变量，原 environment 里该行是注释示例，Key 从未进容器（新测试机落地验证时
+  实测暴露——enhance 报「请先填写 API Key」）。改为 `${PROMPTFORGE_API_KEY:-}`
+  引用注入，`.env` 即填即生效；`.env.example` 说明同步。
+- 部署流程修正（过程记录）：tar 的 `--exclude=data` 按文件名匹配误伤
+  `src/promptforge/data/`，全新部署曾导致容器启动失败；改为全量打包 +
+  服务器端清理本地数据目录，已在 192.168.1.245 完整验证。
+
+### Verified（验证）
+- 新测试机（192.168.1.245）完整落地链：部署 → healthz 版本一致 → admin 登录 →
+  保存 Agnes 连接配置（自定义 Custom + agnes-2.5-flash）→ `/api/lint` →
+  `/api/enhance` **真实模型调用成功**（约 1.9s，输出合理）。
+
 ## [2026-11-19] v0.1.8 · 第十二轮维护（依赖安全巡检 + MCP 补 forge 工具）
 
 ### Security（依赖安全）
