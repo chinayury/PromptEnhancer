@@ -17,8 +17,9 @@ services:
             # 平台口令：管理员登录的第三因子；留空则不校验（仅限内网）
             - WEB_ACCESS_PASSWORD=${WEB_ACCESS_PASSWORD:-}
             - WEB_ADMIN_PASSWORD=${WEB_ADMIN_PASSWORD:-}
-            # API Key 注入(避免明文落库;不设则在界面里填):
-            # - PROMPTFORGE_API_KEY=sk-xxxx
+            # API Key 注入(避免明文落库;不设则在界面里填)。
+            # 经 .env 自动读取后以 ${} 替换传入容器(未引用的 .env 变量不会进容器)
+            - PROMPTFORGE_API_KEY=${PROMPTFORGE_API_KEY:-}
         volumes:
             # 账号库/历史数据库/日志/每用户工作区(与桌面版 data/ 同结构)
             - './data:/app/data'
